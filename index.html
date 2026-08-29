@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sovereign Omnicodex</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  :root {
+    --bg: #0b0e14; --panel: #131824; --panel2: #1a2130; --line: #263145;
+    --text: #dfe6f1; --dim: #8896ad; --accent: #6ea8ff; --good: #55d187;
+    --warn: #e2b341; --bad: #e26d6d; --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  header {
+    padding: 18px 24px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: baseline; gap: 14px;
+  }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: .5px; }
+  header .sub { color: var(--dim); font-size: 13px; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 20px 24px 60px; }
+
+  /* live strip */
+  .strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap: 10px; margin-bottom: 22px; }
+  .feed { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .feed h3 { margin: 0 0 8px; font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: .6px; font-weight: 600; }
+  .feed .pt { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 13px; padding: 2px 0; }
+  .feed .pt b { color: var(--text); font-weight: 600; }
+  .feed .asof { color: var(--dim); font-size: 11px; margin-top: 6px; font-family: var(--mono); }
+  .feed .src { color: var(--dim); font-size: 11px; }
+
+  /* ask */
+  .ask { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  textarea {
+    width: 100%; min-height: 74px; resize: vertical; background: var(--bg);
+    color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px; font: inherit; outline: none;
+  }
+  textarea:focus { border-color: var(--accent); }
+  .row { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+  .tier { display: flex; gap: 6px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 4px; }
+  .tier button { background: none; border: none; color: var(--dim); padding: 6px 12px; border-radius: 6px; cursor: pointer; font: inherit; }
+  .tier button.on { background: var(--panel2); color: var(--text); }
+  .tier button.opus.on { color: var(--warn); }
+  .go { margin-left: auto; background: var(--accent); color: #06101f; border: none; border-radius: 8px; padding: 10px 22px; font-weight: 600; cursor: pointer; font: inherit; }
+  .go:disabled { opacity: .5; cursor: default; }
+  .hint { color: var(--dim); font-size: 12px; }
+
+  /* meta */
+  .meta { display: none; margin: 20px 0 12px; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .badge { font-family: var(--mono); font-size: 12px; padding: 4px 10px; border-radius: 20px; border: 1px solid var(--line); background: var(--panel); }
+  .badge.dom { color: var(--accent); border-color: var(--accent); }
+  .chip { font-family: var(--mono); font-size: 11px; color: var(--dim); background: var(--panel2); border-radius: 6px; padding: 3px 8px; }
+  .cost { color: var(--good); }
+
+  /* answer */
+  #answer { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 6px 24px 20px; display: none; }
+  #answer h1 { font-size: 21px; } #answer h2 { font-size: 17px; color: var(--accent); margin-top: 24px; }
+  #answer h3 { font-size: 14px; color: var(--dim); text-transform: uppercase; letter-spacing: .5px; }
+  #answer table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 13px; }
+  #answer th, #answer td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
+  #answer th { background: var(--panel2); }
+  #answer code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+  #answer hr { border: none; border-top: 1px solid var(--line); margin: 20px 0; }
+  #answer blockquote { border-left: 3px solid var(--line); margin: 0; padding-left: 14px; color: var(--dim); }
+  .spinner { display: none; color: var(--dim); padding: 20px 0; }
+  .err { color: var(--bad); font-family: var(--mono); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>⌘ SOVEREIGN OMNICODEX</h1>
+  <span class="sub">Prometheus · Chronos · Icarus · Methuselah · Hermes</span>
+</header>
+<div class="wrap">
+  <div class="strip" id="strip"><div class="feed"><h3>Live data</h3><div class="asof">loading…</div></div></div>
+
+  <div class="ask">
+    <textarea id="q" placeholder="Ask the Omnicodex…  e.g. What do current yields and the dollar mean for BTC?"></textarea>
+    <div class="row">
+      <div class="tier">
+        <button id="t-haiku" class="on" onclick="setTier('ROUTER')">Fast · Haiku</button>
+        <button id="t-opus" class="opus" onclick="setTier('SPECIALIST')">Deep · Opus ($)</button>
+      </div>
+      <span class="hint" id="tierhint">Fast mode ≈ $0.01 / question</span>
+      <button class="go" id="go" onclick="ask()">Ask →</button>
+    </div>
+  </div>
+
+  <div class="meta" id="meta"></div>
+  <div class="spinner" id="spinner">◍ thinking…</div>
+  <div id="answer"></div>
+</div>
+
+<script>
+  const ENDPOINT = "https://hvstpthdxzfxcilyqyfo.supabase.co/functions/v1/omnicodex-brain";
+  const ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh2c3RwdGhkeHpmeGNpbHlxeWZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwNTEyNzcsImV4cCI6MjEwMjYyNzI3N30.CsmryXwxpkJur9Gbc8xcUr6F2X2e7rcaDhAWCupHfsE"; // publishable Supabase anon key (RLS-protected)
+  let tier = "ROUTER";
+
+  function setTier(t) {
+    tier = t;
+    document.getElementById("t-haiku").classList.toggle("on", t === "ROUTER");
+    document.getElementById("t-opus").classList.toggle("on", t === "SPECIALIST");
+    document.getElementById("tierhint").textContent =
+      t === "ROUTER" ? "Fast mode ≈ $0.01 / question" : "Deep mode ≈ $0.50–0.70 / question";
+  }
+
+  async function post(body) {
+    const r = await fetch(ENDPOINT, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer " + ANON },
+      body: JSON.stringify(body),
+    });
+    return r.json();
+  }
+
+  function fmt(p) {
+    const v = p.unit === "%" ? p.value + "%" : p.value.toLocaleString() + " " + p.unit;
+    return `<div class="pt"><span>${p.label}</span><b>${v}</b></div>`;
+  }
+
+  async function loadFeeds() {
+    try {
+      const d = await post({ feedsOnly: true });
+      const strip = document.getElementById("strip");
+      strip.innerHTML = (d.feeds || []).map(f =>
+        `<div class="feed"><h3>${f.title}</h3>${f.points.map(fmt).join("")}` +
+        `<div class="asof">as of ${(f.points[0]?.asOf||"").slice(0,10)} · ${f.source}</div></div>`
+      ).join("") || '<div class="feed"><h3>Live data</h3><div class="asof">no feeds</div></div>';
+    } catch (e) {
+      document.getElementById("strip").innerHTML = '<div class="feed"><h3>Live data</h3><div class="err">feed load failed</div></div>';
+    }
+  }
+
+  async function ask() {
+    const q = document.getElementById("q").value.trim();
+    if (!q) return;
+    const go = document.getElementById("go");
+    const ansEl = document.getElementById("answer"), metaEl = document.getElementById("meta");
+    go.disabled = true;
+    document.getElementById("spinner").style.display = "block";
+    ansEl.style.display = "none"; metaEl.style.display = "none";
+    try {
+      const d = await post({ message: q, tier });
+      if (d.error) { ansEl.innerHTML = `<p class="err">${d.error}</p>`; }
+      else {
+        ansEl.innerHTML = marked.parse(d.answer || "");
+        const sel = d.selection || {}, u = d.usage || {};
+        const chips = (sel.protocols || []).map(p => `<span class="chip">${p}</span>`).join(" ");
+        metaEl.innerHTML =
+          `<span class="badge dom">${d.routing?.domain || "?"}</span>` +
+          `<span class="badge">${d.tier} · ${d.model || ""}</span>` +
+          (sel.questionTypes?.length ? `<span class="badge">${sel.questionTypes.join(", ")}</span>` : "") +
+          `<span class="badge cost">$${(u.estimatedCostUsd ?? 0).toFixed(4)} · ${u.inputTokens||0}in/${u.outputTokens||0}out</span>` +
+          (chips ? `<div style="flex-basis:100%;margin-top:6px">${chips}</div>` : "");
+        metaEl.style.display = "flex";
+        loadFeeds(); // refresh strip with any freshly-fetched values
+      }
+      ansEl.style.display = "block";
+    } catch (e) {
+      ansEl.innerHTML = `<p class="err">${e}</p>`; ansEl.style.display = "block";
+    } finally {
+      go.disabled = false;
+      document.getElementById("spinner").style.display = "none";
+    }
+  }
+
+  document.getElementById("q").addEventListener("keydown", e => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") ask();
+  });
+  loadFeeds();
+</script>
+</body>
+</html>
