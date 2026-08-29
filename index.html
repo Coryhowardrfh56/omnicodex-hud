@@ -7,126 +7,142 @@
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
   :root {
-    --bg: #0b0e14; --panel: #131824; --panel2: #1a2130; --line: #263145;
-    --text: #dfe6f1; --dim: #8896ad; --accent: #6ea8ff; --good: #55d187;
-    --warn: #e2b341; --bad: #e26d6d; --purple: #b98cff;
-    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --bg:#0b0e14; --panel:#131824; --panel2:#1a2130; --line:#263145;
+    --text:#dfe6f1; --dim:#8896ad; --accent:#6ea8ff; --good:#55d187;
+    --warn:#e2b341; --bad:#e26d6d; --purple:#b98cff;
+    --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
   }
-  * { box-sizing: border-box; }
-  html, body { height: 100%; }
-  body {
-    margin: 0; background: var(--bg); color: var(--text);
-    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    display: flex; flex-direction: column;
-  }
-  header {
-    padding: 14px 24px; border-bottom: 1px solid var(--line);
-    display: flex; align-items: center; gap: 14px; flex-shrink: 0;
-  }
-  header h1 { font-size: 17px; margin: 0; letter-spacing: .5px; }
-  header .sub { color: var(--dim); font-size: 12px; }
-  header .meter { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--dim); text-align: right; }
-  header .meter b { color: var(--good); }
-  header .clear { background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit; font-size: 12px; }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{margin:0;background:var(--bg);color:var(--text);display:flex;flex-direction:column;
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}
+  header{padding:12px 24px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;flex-shrink:0;}
+  header h1{font-size:16px;margin:0;letter-spacing:.5px;}
+  .nav{display:flex;gap:4px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:3px;}
+  .nav button{background:none;border:none;color:var(--dim);padding:5px 12px;border-radius:6px;cursor:pointer;font:inherit;font-size:13px;}
+  .nav button.on{background:var(--panel2);color:var(--text);}
+  header .meter{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--dim);}
+  header .meter .cost{color:var(--good);}
+  .clear{background:none;border:1px solid var(--line);color:var(--dim);border-radius:6px;padding:5px 10px;cursor:pointer;font:inherit;font-size:12px;}
+  .scroll{flex:1;overflow-y:auto;}
+  .wrap{max-width:1040px;margin:0 auto;padding:18px 24px 24px;}
 
-  .scroll { flex: 1; overflow-y: auto; }
-  .wrap { max-width: 1040px; margin: 0 auto; padding: 18px 24px 24px; }
+  .striptop{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+  .striptop h2{font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px;margin:0;font-weight:600;}
+  .striptop button{background:none;border:none;color:var(--dim);cursor:pointer;font-size:12px;}
+  .striptop button:hover{color:var(--accent);}
+  .strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:10px;margin-bottom:12px;}
+  .feed{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 13px;}
+  .feed h3{margin:0 0 7px;font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px;font-weight:600;}
+  .feed .pt{display:flex;justify-content:space-between;font-family:var(--mono);font-size:13px;padding:2px 0;}
+  .feed .pt b{color:var(--text);font-weight:600;}
+  .feed .asof{color:var(--dim);font-size:10px;margin-top:6px;font-family:var(--mono);}
+  .feed .asof.stale{color:var(--warn);} .feed .asof.old{color:var(--bad);}
+  .dark{display:none;flex-wrap:wrap;gap:6px;margin-bottom:20px;}
+  .dark.show{display:flex;}
+  .darkchip{font-family:var(--mono);font-size:11px;color:var(--dim);background:var(--panel);border:1px dashed var(--line);border-radius:6px;padding:4px 9px;}
+  .darkchip b{color:var(--dim);}
 
-  /* live strip */
-  .striptop { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-  .striptop h2 { font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: .6px; margin: 0; font-weight: 600; }
-  .refresh { background: none; border: none; color: var(--dim); cursor: pointer; font-size: 13px; }
-  .refresh:hover { color: var(--accent); }
-  .strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(175px,1fr)); gap: 10px; margin-bottom: 20px; }
-  .feed { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 11px 13px; }
-  .feed h3 { margin: 0 0 7px; font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .6px; font-weight: 600; }
-  .feed .pt { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 13px; padding: 2px 0; }
-  .feed .pt b { color: var(--text); font-weight: 600; }
-  .feed .asof { color: var(--dim); font-size: 10px; margin-top: 6px; font-family: var(--mono); }
+  .msg{margin:14px 0;}
+  .msg.user{text-align:right;}
+  .msg.user .bubble{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px 15px;display:inline-block;max-width:80%;}
+  .answer{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:4px 22px 16px;}
+  .answer h1{font-size:20px;} .answer h2{font-size:16px;color:var(--accent);margin-top:22px;}
+  .answer h3{font-size:13px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;}
+  .answer table{border-collapse:collapse;width:100%;margin:10px 0;font-size:13px;}
+  .answer th,.answer td{border:1px solid var(--line);padding:6px 10px;text-align:left;}
+  .answer th{background:var(--panel2);}
+  .answer code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:13px;}
+  .answer hr{border:none;border-top:1px solid var(--line);margin:18px 0;}
+  .answer blockquote{border-left:3px solid var(--line);margin:0;padding-left:14px;color:var(--dim);}
+  .lbl{font-family:var(--mono);font-size:11px;font-weight:700;padding:1px 6px;border-radius:4px;}
+  .lbl.v{background:rgba(85,209,135,.15);color:var(--good);} .lbl.i{background:rgba(110,168,255,.15);color:var(--accent);}
+  .lbl.u{background:rgba(185,140,255,.15);color:var(--purple);} .lbl.m{background:rgba(226,179,65,.15);color:var(--warn);}
 
-  /* conversation */
-  .msg { margin: 14px 0; }
-  .msg.user .bubble {
-    background: var(--panel2); border: 1px solid var(--line); border-radius: 12px;
-    padding: 10px 15px; display: inline-block; max-width: 80%; margin-left: auto;
-  }
-  .msg.user { text-align: right; }
-  .answer { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 4px 22px 16px; }
-  .answer h1 { font-size: 20px; } .answer h2 { font-size: 16px; color: var(--accent); margin-top: 22px; }
-  .answer h3 { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-spacing: .5px; }
-  .answer table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 13px; }
-  .answer th, .answer td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
-  .answer th { background: var(--panel2); }
-  .answer code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
-  .answer hr { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
-  .answer blockquote { border-left: 3px solid var(--line); margin: 0; padding-left: 14px; color: var(--dim); }
+  .meta{margin:10px 0 2px;display:flex;gap:7px;flex-wrap:wrap;align-items:center;}
+  .badge{font-family:var(--mono);font-size:11px;padding:3px 9px;border-radius:20px;border:1px solid var(--line);background:var(--panel2);}
+  .badge.dom{color:var(--accent);border-color:var(--accent);cursor:pointer;}
+  .chip{font-family:var(--mono);font-size:10px;color:var(--dim);background:var(--panel2);border-radius:5px;padding:2px 7px;}
+  .cost{color:var(--good);}
+  .actions{display:flex;gap:8px;margin-top:8px;}
+  .act{background:none;border:1px solid var(--line);color:var(--dim);border-radius:6px;padding:4px 10px;cursor:pointer;font:inherit;font-size:12px;}
+  .act:hover{color:var(--text);border-color:var(--accent);}
+  .act.saved{color:var(--good);border-color:var(--good);}
+  .spinner{color:var(--dim);padding:8px 0;font-family:var(--mono);}
+  .err{color:var(--bad);font-family:var(--mono);font-size:13px;}
+  .examples{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0;}
+  .ex{background:var(--panel);border:1px solid var(--line);color:var(--dim);border-radius:16px;padding:6px 12px;font-size:12px;cursor:pointer;}
+  .ex:hover{color:var(--text);border-color:var(--accent);}
 
-  .lbl { font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 4px; }
-  .lbl.v { background: rgba(85,209,135,.15); color: var(--good); }
-  .lbl.i { background: rgba(110,168,255,.15); color: var(--accent); }
-  .lbl.u { background: rgba(185,140,255,.15); color: var(--purple); }
-  .lbl.m { background: rgba(226,179,65,.15); color: var(--warn); }
+  .composer{border-top:1px solid var(--line);background:var(--panel);padding:12px 24px;flex-shrink:0;}
+  .composer .inner{max-width:1040px;margin:0 auto;}
+  textarea{width:100%;min-height:52px;resize:vertical;background:var(--bg);color:var(--text);
+    border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:inherit;outline:none;}
+  textarea:focus{border-color:var(--accent);}
+  .row{display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap;}
+  .tier{display:flex;gap:6px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:4px;}
+  .tier button{background:none;border:none;color:var(--dim);padding:6px 12px;border-radius:6px;cursor:pointer;font:inherit;font-size:13px;}
+  .tier button.on{background:var(--panel2);color:var(--text);} .tier button.opus.on{color:var(--warn);}
+  .brief{background:none;border:1px solid var(--line);color:var(--dim);border-radius:8px;padding:8px 14px;cursor:pointer;font:inherit;font-size:13px;}
+  .brief:hover{color:var(--text);border-color:var(--accent);}
+  .hint{color:var(--dim);font-size:12px;}
+  .go{margin-left:auto;background:var(--accent);color:#06101f;border:none;border-radius:8px;padding:9px 22px;font-weight:600;cursor:pointer;font:inherit;}
+  .go:disabled{opacity:.5;cursor:default;}
 
-  .meta { margin: 10px 0 2px; display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
-  .badge { font-family: var(--mono); font-size: 11px; padding: 3px 9px; border-radius: 20px; border: 1px solid var(--line); background: var(--panel2); }
-  .badge.dom { color: var(--accent); border-color: var(--accent); }
-  .chip { font-family: var(--mono); font-size: 10px; color: var(--dim); background: var(--panel2); border-radius: 5px; padding: 2px 7px; }
-  .cost { color: var(--good); }
-  .spinner { color: var(--dim); padding: 8px 0; font-family: var(--mono); }
-  .err { color: var(--bad); font-family: var(--mono); font-size: 13px; }
-  .examples { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 2px; }
-  .ex { background: var(--panel); border: 1px solid var(--line); color: var(--dim); border-radius: 16px; padding: 6px 12px; font-size: 12px; cursor: pointer; }
-  .ex:hover { color: var(--text); border-color: var(--accent); }
+  /* library */
+  .libsearch{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:inherit;outline:none;margin-bottom:14px;}
+  .libitem{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 15px;margin-bottom:10px;cursor:pointer;}
+  .libitem:hover{border-color:var(--accent);}
+  .libitem .q{font-weight:600;} .libitem .m{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:5px;display:flex;gap:8px;flex-wrap:wrap;}
+  .libempty{color:var(--dim);padding:30px 0;text-align:center;}
 
-  /* composer */
-  .composer { border-top: 1px solid var(--line); background: var(--panel); padding: 12px 24px; flex-shrink: 0; }
-  .composer .inner { max-width: 1040px; margin: 0 auto; }
-  textarea {
-    width: 100%; min-height: 52px; resize: vertical; background: var(--bg);
-    color: var(--text); border: 1px solid var(--line); border-radius: 8px;
-    padding: 10px 12px; font: inherit; outline: none;
-  }
-  textarea:focus { border-color: var(--accent); }
-  .row { display: flex; align-items: center; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
-  .tier { display: flex; gap: 6px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 4px; }
-  .tier button { background: none; border: none; color: var(--dim); padding: 6px 12px; border-radius: 6px; cursor: pointer; font: inherit; font-size: 13px; }
-  .tier button.on { background: var(--panel2); color: var(--text); }
-  .tier button.opus.on { color: var(--warn); }
-  .hint { color: var(--dim); font-size: 12px; }
-  .go { margin-left: auto; background: var(--accent); color: #06101f; border: none; border-radius: 8px; padding: 9px 22px; font-weight: 600; cursor: pointer; font: inherit; }
-  .go:disabled { opacity: .5; cursor: default; }
+  /* modal */
+  .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;align-items:flex-start;justify-content:center;overflow-y:auto;}
+  .overlay.show{display:flex;}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:12px;max-width:820px;width:92%;margin:48px 0;padding:20px 26px;}
+  .modal .x{float:right;background:none;border:none;color:var(--dim);font-size:20px;cursor:pointer;}
+  .modal h2{margin-top:4px;color:var(--accent);}
 </style>
 </head>
 <body>
 <header>
-  <h1>⌘ SOVEREIGN OMNICODEX</h1>
-  <span class="sub">Prometheus · Chronos · Icarus · Methuselah · Hermes</span>
-  <div class="meter">
-    <span id="meter">0 questions · $0.0000 this session</span>
-    <button class="clear" onclick="clearSession()">clear</button>
+  <h1>⌘ OMNICODEX</h1>
+  <div class="nav">
+    <button id="nav-chat" class="on" onclick="showView('chat')">Chat</button>
+    <button id="nav-lib" onclick="showView('lib')">Library</button>
   </div>
+  <div class="meter"><span id="meter">0 questions · <span class="cost">$0.0000</span></span></div>
+  <button class="clear" onclick="clearSession()">clear</button>
 </header>
 
 <div class="scroll">
-  <div class="wrap">
+  <!-- CHAT VIEW -->
+  <div class="wrap" id="view-chat">
     <div class="striptop">
       <h2>Live data</h2>
-      <button class="refresh" onclick="loadFeeds()" title="refresh feeds">↻</button>
+      <button onclick="loadFeeds()" title="refresh">↻</button>
+      <button id="darktoggle" onclick="toggleDark()">show what's not connected</button>
     </div>
     <div class="strip" id="strip"><div class="feed"><h3>Live data</h3><div class="asof">loading…</div></div></div>
+    <div class="dark" id="dark"></div>
 
     <div class="examples" id="examples">
       <button class="ex" onclick="fill(this)">What do current yields and the dollar mean for BTC?</button>
       <button class="ex" onclick="fill(this)">How does Monero strengthen my macro thesis?</button>
-      <button class="ex" onclick="fill(this)">Give me a snapshot of the system</button>
       <button class="ex" onclick="fill(this)">What did rising long yields do before past recessions?</button>
     </div>
-
     <div id="thread"></div>
+  </div>
+
+  <!-- LIBRARY VIEW -->
+  <div class="wrap" id="view-lib" style="display:none">
+    <input class="libsearch" id="libsearch" placeholder="Search saved analyses by finding, question, or note…" oninput="libSearchDebounced()" />
+    <div id="liblist"><div class="libempty">loading…</div></div>
   </div>
 </div>
 
-<div class="composer">
+<!-- COMPOSER (chat only) -->
+<div class="composer" id="composer">
   <div class="inner">
     <textarea id="q" placeholder="Ask the Omnicodex…  (⌘/Ctrl+Enter to send)"></textarea>
     <div class="row">
@@ -134,153 +150,222 @@
         <button id="t-haiku" class="on" onclick="setTier('ROUTER')">Fast · Haiku</button>
         <button id="t-opus" class="opus" onclick="setTier('SPECIALIST')">Deep · Opus ($)</button>
       </div>
+      <button class="brief" onclick="dailyBrief()" title="Generate a macro brief from live data">📋 Daily brief</button>
       <span class="hint" id="tierhint">Fast mode ≈ $0.01 / question</span>
       <button class="go" id="go" onclick="ask()">Ask →</button>
     </div>
   </div>
 </div>
 
+<!-- MODAL -->
+<div class="overlay" id="overlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modal"></div>
+</div>
+
 <script>
   const ENDPOINT = "https://hvstpthdxzfxcilyqyfo.supabase.co/functions/v1/omnicodex-brain";
   const ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh2c3RwdGhkeHpmeGNpbHlxeWZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwNTEyNzcsImV4cCI6MjEwMjYyNzI3N30.CsmryXwxpkJur9Gbc8xcUr6F2X2e7rcaDhAWCupHfsE"; // publishable Supabase anon key (RLS-protected)
-  const HISTORY_TURNS = 6; // how many prior messages to send as context
+  const HISTORY_TURNS = 6;
 
-  let tier = "ROUTER";
-  let messages = [];              // {role, text} — raw, for history + render
-  let session = { count: 0, cost: 0 };
+  const DOMAINS = {
+    HERMES:"Control plane. Routes every request, governs the registry, runs archaeology, produces snapshots, resolves aliases. Never performs domain analysis itself.",
+    PROMETHEUS:"Live economics, markets, crypto, capital, AI infrastructure. Owns all current macro. The only domain with live-data feeds.",
+    CHRONOS:"History and causal reconstruction. Does NOT own live macro — answers the historical question, then hands current-market implications to Prometheus.",
+    ICARUS:"Religion, theology, philosophy, NDE, symbolic and esoteric research. NOT the home for economic or privacy philosophy.",
+    METHUSELAH:"Health, biology, fitness, nutrition, recovery, longevity, addiction frameworks.",
+  };
 
-  // ---- persistence ----
-  function save() {
-    localStorage.setItem("omni_thread", JSON.stringify(messages));
-    localStorage.setItem("omni_session", JSON.stringify(session));
-  }
-  function restore() {
-    try { messages = JSON.parse(localStorage.getItem("omni_thread") || "[]"); } catch { messages = []; }
-    try { session = JSON.parse(localStorage.getItem("omni_session") || '{"count":0,"cost":0}'); } catch {}
-    renderThread(); renderMeter();
-  }
-  function clearSession() {
-    messages = []; session = { count: 0, cost: 0 };
-    save(); renderThread(); renderMeter();
-  }
+  let tier = "ROUTER", messages = [], session = {count:0,cost:0};
 
-  function renderMeter() {
-    document.getElementById("meter").textContent =
-      `${session.count} question${session.count === 1 ? "" : "s"} · $${session.cost.toFixed(4)} this session`;
+  function save(){localStorage.setItem("omni_thread",JSON.stringify(messages));localStorage.setItem("omni_session",JSON.stringify(session));}
+  function restore(){
+    try{messages=JSON.parse(localStorage.getItem("omni_thread")||"[]");}catch{messages=[];}
+    try{session=JSON.parse(localStorage.getItem("omni_session")||'{"count":0,"cost":0}');}catch{}
+    renderThread();renderMeter();
   }
+  function clearSession(){messages=[];session={count:0,cost:0};save();renderThread();renderMeter();}
+  function renderMeter(){document.getElementById("meter").innerHTML=`${session.count} question${session.count===1?"":"s"} · <span class="cost">$${session.cost.toFixed(4)}</span>`;}
 
-  // color-code the four claim labels so evidence discipline is visible
-  function highlight(html) {
-    const map = [
-      [/\bVERIFIED\b/g, "v"], [/\bINFERENCE\b/g, "i"],
-      [/\bUSER[ _]THESIS\b/g, "u"], [/\bMODEL[ _]PROBABILITY\b/g, "m"],
-    ];
-    for (const [re, cls] of map) html = html.replace(re, (m) => `<span class="lbl ${cls}">${m}</span>`);
+  function highlight(html){
+    const map=[[/\bVERIFIED\b/g,"v"],[/\bINFERENCE\b/g,"i"],[/\bUSER[ _]THESIS\b/g,"u"],[/\bMODEL[ _]PROBABILITY\b/g,"m"]];
+    for(const [re,cls] of map) html=html.replace(re,m=>`<span class="lbl ${cls}">${m}</span>`);
     return html;
   }
+  function escapeHtml(s){return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
 
-  function renderThread() {
-    const t = document.getElementById("thread");
-    t.innerHTML = messages.map((m) => {
-      if (m.role === "user") return `<div class="msg user"><div class="bubble">${escapeHtml(m.text)}</div></div>`;
-      return `<div class="msg"><div class="answer">${highlight(marked.parse(m.text))}</div>${m.metaHtml || ""}</div>`;
+  function renderThread(){
+    const t=document.getElementById("thread");
+    t.innerHTML=messages.map((m,i)=>{
+      if(m.role==="user") return `<div class="msg user"><div class="bubble">${escapeHtml(m.text)}</div></div>`;
+      return `<div class="msg"><div class="answer">${highlight(marked.parse(m.text))}</div>${m.metaHtml||""}${actionBar(i,m)}</div>`;
     }).join("");
-    document.getElementById("examples").style.display = messages.length ? "none" : "flex";
+    document.getElementById("examples").style.display=messages.length?"none":"flex";
   }
-  function escapeHtml(s) { return s.replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
-
-  function setTier(t) {
-    tier = t;
-    document.getElementById("t-haiku").classList.toggle("on", t === "ROUTER");
-    document.getElementById("t-opus").classList.toggle("on", t === "SPECIALIST");
-    document.getElementById("tierhint").textContent =
-      t === "ROUTER" ? "Fast mode ≈ $0.01 / question" : "Deep mode ≈ $0.50–0.70 / question";
+  function actionBar(i,m){
+    return `<div class="actions">`+
+      `<button class="act ${m.saved?'saved':''}" onclick="saveAnalysis(${i})">${m.saved?'✓ saved':'★ save'}</button>`+
+      `<button class="act" onclick="copyMd(${i})">⧉ copy</button>`+
+      `<button class="act" onclick="exportMd(${i})">⭳ export .md</button></div>`;
   }
-  function fill(el) { document.getElementById("q").value = el.textContent; document.getElementById("q").focus(); }
 
-  async function post(body) {
-    const r = await fetch(ENDPOINT, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: "Bearer " + ANON },
-      body: JSON.stringify(body),
-    });
+  function setTier(t){tier=t;
+    document.getElementById("t-haiku").classList.toggle("on",t==="ROUTER");
+    document.getElementById("t-opus").classList.toggle("on",t==="SPECIALIST");
+    document.getElementById("tierhint").textContent=t==="ROUTER"?"Fast mode ≈ $0.01 / question":"Deep mode ≈ $0.50–0.70 / question";
+  }
+  function fill(el){document.getElementById("q").value=el.textContent;document.getElementById("q").focus();}
+
+  async function post(body){
+    const r=await fetch(ENDPOINT,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+ANON},body:JSON.stringify(body)});
     return r.json();
   }
 
-  function fmt(p) {
-    const v = p.unit === "%" ? p.value + "%" : p.value.toLocaleString() + " " + p.unit;
-    return `<div class="pt"><span>${p.label}</span><b>${v}</b></div>`;
+  // ---- live feeds + staleness + honesty panel ----
+  function ageDays(asOf){const d=new Date(asOf);return isNaN(d)?0:(Date.now()-d.getTime())/86400000;}
+  function fmt(p){const v=p.unit==="%"?p.value+"%":p.value.toLocaleString()+" "+p.unit;return `<div class="pt"><span>${p.label}</span><b>${v}</b></div>`;}
+  let lastSources=[];
+  async function loadFeeds(){
+    try{
+      const d=await post({feedsOnly:true});
+      lastSources=d.sources||[];
+      const liveKeys=new Set((d.feeds||[]).map(f=>f.key));
+      document.getElementById("strip").innerHTML=(d.feeds||[]).map(f=>{
+        const age=ageDays(f.points[0]?.asOf);
+        const cls=age>7?"old":age>2?"stale":"";
+        return `<div class="feed"><h3>${f.title}</h3>${f.points.map(fmt).join("")}`+
+          `<div class="asof ${cls}">as of ${(f.points[0]?.asOf||"").slice(0,10)} · ${f.source}${age>2?" · "+Math.floor(age)+"d old":""}</div></div>`;
+      }).join("")||'<div class="feed"><h3>Live data</h3><div class="asof">no feeds</div></div>';
+      // honesty panel
+      const dark=lastSources.filter(s=>!liveKeys.has(s.key));
+      document.getElementById("dark").innerHTML=dark.map(s=>`<span class="darkchip">⊘ ${s.key} — <b>not connected</b> <span style="opacity:.7">(${s.covers})</span></span>`).join("");
+    }catch{document.getElementById("strip").innerHTML='<div class="feed"><h3>Live data</h3><div class="err">feed load failed</div></div>';}
   }
-  async function loadFeeds() {
-    try {
-      const d = await post({ feedsOnly: true });
-      document.getElementById("strip").innerHTML = (d.feeds || []).map(f =>
-        `<div class="feed"><h3>${f.title}</h3>${f.points.map(fmt).join("")}` +
-        `<div class="asof">as of ${(f.points[0]?.asOf || "").slice(0, 10)} · ${f.source}</div></div>`
-      ).join("") || '<div class="feed"><h3>Live data</h3><div class="asof">no feeds</div></div>';
-    } catch {
-      document.getElementById("strip").innerHTML = '<div class="feed"><h3>Live data</h3><div class="err">feed load failed</div></div>';
-    }
-  }
-
-  function metaBar(d) {
-    const sel = d.selection || {}, u = d.usage || {};
-    const chips = (sel.protocols || []).map(p => `<span class="chip">${p}</span>`).join(" ");
-    return `<div class="meta">` +
-      `<span class="badge dom">${d.routing?.domain || "?"}</span>` +
-      `<span class="badge">${d.tier} · ${d.model || ""}</span>` +
-      (sel.questionTypes?.length ? `<span class="badge">${sel.questionTypes.join(", ")}</span>` : "") +
-      `<span class="badge cost">$${(u.estimatedCostUsd ?? 0).toFixed(4)} · ${u.inputTokens || 0}in/${u.outputTokens || 0}out</span>` +
-      (chips ? `<div style="flex-basis:100%;margin-top:5px">${chips}</div>` : "") +
-      `</div>`;
+  function toggleDark(){
+    const d=document.getElementById("dark"),b=document.getElementById("darktoggle");
+    d.classList.toggle("show");
+    b.textContent=d.classList.contains("show")?"hide what's not connected":"show what's not connected";
   }
 
-  async function ask() {
-    const el = document.getElementById("q");
-    const q = el.value.trim();
-    if (!q) return;
-    const go = document.getElementById("go");
-    go.disabled = true; el.value = "";
+  function metaBar(d){
+    const sel=d.selection||{},u=d.usage||{};
+    const chips=(sel.protocols||[]).map(p=>`<span class="chip">${p}</span>`).join(" ");
+    return `<div class="meta">`+
+      `<span class="badge dom" onclick="domainLens('${d.routing?.domain||""}')">${d.routing?.domain||"?"}</span>`+
+      `<span class="badge">${d.tier} · ${d.model||""}</span>`+
+      (sel.questionTypes?.length?`<span class="badge">${sel.questionTypes.join(", ")}</span>`:"")+
+      `<span class="badge cost">$${(u.estimatedCostUsd??0).toFixed(4)} · ${u.inputTokens||0}in/${u.outputTokens||0}out</span>`+
+      (chips?`<div style="flex-basis:100%;margin-top:5px">${chips}</div>`:"")+`</div>`;
+  }
 
-    messages.push({ role: "user", text: q });
-    const thinkId = "think" + Date.now();
+  async function ask(prefill){
+    const el=document.getElementById("q");
+    const q=(prefill||el.value).trim();
+    if(!q) return;
+    const go=document.getElementById("go");
+    go.disabled=true; if(!prefill) el.value="";
+    messages.push({role:"user",text:q});
+    const tid="think"+Date.now();
     renderThread();
-    document.getElementById("thread").insertAdjacentHTML("beforeend",
-      `<div class="msg" id="${thinkId}"><div class="spinner">◍ ${tier === "SPECIALIST" ? "deep analysis" : "thinking"}…</div></div>`);
+    document.getElementById("thread").insertAdjacentHTML("beforeend",`<div class="msg" id="${tid}"><div class="spinner">◍ ${tier==="SPECIALIST"?"deep analysis":"thinking"}…</div></div>`);
     scrollDown();
-
-    // prior turns as context (exclude the message we're about to send)
-    const history = messages.slice(0, -1).slice(-HISTORY_TURNS).map(m => ({ role: m.role, content: m.text }));
-    try {
-      const d = await post({ message: q, tier, history });
-      document.getElementById(thinkId)?.remove();
-      if (d.error) {
-        messages.push({ role: "assistant", text: "**Error:** " + d.error });
-      } else {
-        session.count++; session.cost += d.usage?.estimatedCostUsd || 0;
-        messages.push({ role: "assistant", text: d.answer || "(empty)", metaHtml: metaBar(d) });
+    const history=messages.slice(0,-1).slice(-HISTORY_TURNS).map(m=>({role:m.role,content:m.text}));
+    try{
+      const d=await post({message:q,tier,history});
+      document.getElementById(tid)?.remove();
+      if(d.error){messages.push({role:"assistant",text:"**Error:** "+d.error});}
+      else{
+        session.count++; session.cost+=d.usage?.estimatedCostUsd||0;
+        messages.push({role:"assistant",text:d.answer||"(empty)",metaHtml:metaBar(d),
+          raw:{question:q,domain:d.routing?.domain,tier:d.tier,model:d.model,selection:d.selection,usage:d.usage,feeds:d.feeds}});
         loadFeeds();
       }
-      renderThread(); renderMeter(); save(); scrollDown();
-    } catch (e) {
-      document.getElementById(thinkId)?.remove();
-      messages.push({ role: "assistant", text: "**Error:** " + e });
-      renderThread(); save();
-    } finally {
-      go.disabled = false;
-    }
+      renderThread();renderMeter();save();scrollDown();
+    }catch(e){document.getElementById(tid)?.remove();messages.push({role:"assistant",text:"**Error:** "+e});renderThread();save();}
+    finally{go.disabled=false;}
+  }
+  function dailyBrief(){
+    ask("Give me today's macro brief from the live feeds: yields & Fed funds, the dollar, oil, BTC/ETH, and stablecoin supply. Lead with the executive read, then the cross-asset picture, then what to watch. Be explicit about what is NOT connected.");
+  }
+  function scrollDown(){const s=document.querySelector(".scroll");s.scrollTop=s.scrollHeight;}
+
+  // ---- answer actions ----
+  function copyMd(i){navigator.clipboard.writeText(messages[i].text);toast("copied markdown");}
+  function exportMd(i){
+    const m=messages[i]; const q=(m.raw?.question||"analysis").slice(0,40).replace(/[^\w]+/g,"_");
+    const blob=new Blob([m.text],{type:"text/markdown"});
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`omnicodex_${q}.md`;a.click();
+  }
+  async function saveAnalysis(i){
+    const m=messages[i]; if(!m.raw){toast("nothing to save");return;}
+    const note=prompt("Optional note — why save this / what situation does it capture?")||null;
+    const r=m.raw;
+    const res=await post({action:"save_analysis",question:r.question,domain:r.domain,tier:r.tier,model:r.model,
+      answer_md:m.text,feeds_snapshot:r.feeds,selection:r.selection,usage:r.usage,note});
+    if(res.id){m.saved=true;save();renderThread();toast("saved to library");}else{toast("save failed: "+(res.error||""));}
+  }
+  function toast(msg){
+    const t=document.createElement("div");t.textContent=msg;
+    t.style.cssText="position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:8px 16px;border-radius:8px;z-index:60;font-size:13px;";
+    document.body.appendChild(t);setTimeout(()=>t.remove(),1800);
   }
 
-  function scrollDown() {
-    const s = document.querySelector(".scroll");
-    s.scrollTop = s.scrollHeight;
+  // ---- domain lens ----
+  function domainLens(dom){
+    if(!DOMAINS[dom]) return;
+    openModal(`<h2>${dom}</h2><p>${DOMAINS[dom]}</p><p class="hint">One of five isolated reasoning domains. Each request is routed to exactly one; context never crosses between them unless fusion is explicitly declared.</p>`);
+  }
+  function openModal(html){document.getElementById("modal").innerHTML=`<button class="x" onclick="closeModal()">×</button>`+html;document.getElementById("overlay").classList.add("show");}
+  function closeModal(){document.getElementById("overlay").classList.remove("show");}
+
+  // ---- views ----
+  function showView(v){
+    document.getElementById("view-chat").style.display=v==="chat"?"block":"none";
+    document.getElementById("view-lib").style.display=v==="lib"?"block":"none";
+    document.getElementById("composer").style.display=v==="chat"?"block":"none";
+    document.getElementById("nav-chat").classList.toggle("on",v==="chat");
+    document.getElementById("nav-lib").classList.toggle("on",v==="lib");
+    if(v==="lib") libLoad("");
   }
 
-  document.getElementById("q").addEventListener("keydown", e => {
-    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") ask();
-  });
-  restore();
-  loadFeeds();
+  // ---- library ----
+  let libTimer;
+  function libSearchDebounced(){clearTimeout(libTimer);libTimer=setTimeout(()=>libLoad(document.getElementById("libsearch").value),300);}
+  async function libLoad(query){
+    const list=document.getElementById("liblist");
+    list.innerHTML='<div class="libempty">loading…</div>';
+    const d=await post({action:"list_analyses",query});
+    const items=d.analyses||[];
+    if(!items.length){list.innerHTML='<div class="libempty">No saved analyses yet. Save one from the ★ button under any answer.</div>';return;}
+    list.innerHTML=items.map(a=>{
+      const feeds=(a.feeds_snapshot||[]).flatMap(f=>f.points?.slice(0,1).map(p=>`${p.label} ${p.value}${p.unit==="%"?"%":""}`)||[]).slice(0,4).join(" · ");
+      return `<div class="libitem" onclick="libOpen('${a.id}')">`+
+        `<div class="q">${escapeHtml(a.question||"(untitled)")}</div>`+
+        `<div class="m"><span>${new Date(a.created_at).toLocaleString()}</span><span>${a.domain||""} · ${a.model||a.tier||""}</span>${feeds?`<span>${feeds}</span>`:""}${a.note?`<span>📝 ${escapeHtml(a.note)}</span>`:""}</div></div>`;
+    }).join("");
+  }
+  async function libOpen(id){
+    openModal('<div class="spinner">loading…</div>');
+    const d=await post({action:"get_analysis",id});
+    const a=d.analysis; if(!a){openModal("<p class='err'>not found</p>");return;}
+    const snap=(a.feeds_snapshot||[]).map(f=>`<b>${f.title||f.key}:</b> ${(f.points||[]).map(p=>p.label+" "+p.value+(p.unit==="%"?"%":" "+p.unit)).join(", ")}`).join("<br>");
+    openModal(
+      `<h2>${escapeHtml(a.question||"analysis")}</h2>`+
+      `<div class="hint">${new Date(a.created_at).toLocaleString()} · ${a.domain||""} · ${a.model||a.tier||""}`+
+      `${a.usage?` · $${(a.usage.estimatedCostUsd||0).toFixed(4)}`:""}</div>`+
+      (a.note?`<blockquote>${escapeHtml(a.note)}</blockquote>`:"")+
+      (snap?`<div class="feed" style="margin:12px 0"><h3>Live data when written</h3><div style="font-family:var(--mono);font-size:12px;line-height:1.8">${snap}</div></div>`:"")+
+      `<div class="answer" style="border:none;padding:0">${highlight(marked.parse(a.answer_md||""))}</div>`+
+      `<div class="actions"><button class="act" onclick="libDelete('${a.id}')">🗑 delete</button></div>`
+    );
+  }
+  async function libDelete(id){
+    if(!confirm("Delete this saved analysis?"))return;
+    await post({action:"delete_analysis",id});closeModal();libLoad(document.getElementById("libsearch").value);
+  }
+
+  document.getElementById("q").addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&e.key==="Enter")ask();});
+  document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();});
+  restore();loadFeeds();
 </script>
 </body>
 </html>
