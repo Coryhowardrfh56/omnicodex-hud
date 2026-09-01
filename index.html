@@ -95,6 +95,12 @@
   .libitem:hover{border-color:var(--accent);}
   .libitem .q{font-weight:600;} .libitem .m{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:5px;display:flex;gap:8px;flex-wrap:wrap;}
   .libempty{color:var(--dim);padding:30px 0;text-align:center;}
+  .libhead{display:flex;align-items:center;gap:10px;}
+  .sim{font-family:var(--mono);font-size:12px;font-weight:700;padding:3px 9px;border-radius:20px;flex-shrink:0;}
+  .sim.hi{background:rgba(85,209,135,.18);color:var(--good);} .sim.mid{background:rgba(226,179,65,.18);color:var(--warn);} .sim.lo{background:rgba(226,109,109,.15);color:var(--bad);}
+  .deltas{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:6px;}
+  .deltas .up{color:var(--good);} .deltas .dn{color:var(--bad);}
+  .curbar{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-family:var(--mono);font-size:12px;color:var(--dim);}
 
   /* modal */
   .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;align-items:flex-start;justify-content:center;overflow-y:auto;}
@@ -136,6 +142,12 @@
 
   <!-- LIBRARY VIEW -->
   <div class="wrap" id="view-lib" style="display:none">
+    <div class="striptop" style="margin-bottom:12px">
+      <div class="nav">
+        <button id="lm-recent" class="on" onclick="libSetMode('recent')">Recent</button>
+        <button id="lm-regime" onclick="libSetMode('regime')">◎ Match today's regime</button>
+      </div>
+    </div>
     <input class="libsearch" id="libsearch" placeholder="Search saved analyses by finding, question, or note…" oninput="libSearchDebounced()" />
     <div id="liblist"><div class="libempty">loading…</div></div>
   </div>
@@ -324,12 +336,44 @@
     document.getElementById("composer").style.display=v==="chat"?"block":"none";
     document.getElementById("nav-chat").classList.toggle("on",v==="chat");
     document.getElementById("nav-lib").classList.toggle("on",v==="lib");
-    if(v==="lib") libLoad("");
+    if(v==="lib") libReload();
   }
 
   // ---- library ----
-  let libTimer;
+  let libTimer, libMode="recent";
+  function libSetMode(m){
+    libMode=m;
+    document.getElementById("lm-recent").classList.toggle("on",m==="recent");
+    document.getElementById("lm-regime").classList.toggle("on",m==="regime");
+    document.getElementById("libsearch").style.display=m==="recent"?"block":"none";
+    libReload();
+  }
+  function libReload(){ libMode==="regime" ? libMatchRegime() : libLoad(document.getElementById("libsearch").value); }
   function libSearchDebounced(){clearTimeout(libTimer);libTimer=setTimeout(()=>libLoad(document.getElementById("libsearch").value),300);}
+
+  function prettyDim(dim){ return dim.split(":").slice(1).join(":") || dim; }
+  function fmtDelta(x){
+    const dir=x.pctChange>=0?"up":"dn", sign=x.pctChange>=0?"+":"";
+    const n=v=>Math.abs(v)>=1000?v.toLocaleString(undefined,{maximumFractionDigits:0}):v;
+    return `<span class="${dir}">${prettyDim(x.dim)} ${n(x.then)}→${n(x.now)} (${sign}${(x.pctChange*100).toFixed(1)}%)</span>`;
+  }
+  async function libMatchRegime(){
+    const list=document.getElementById("liblist");
+    list.innerHTML='<div class="libempty">matching against today’s live regime…</div>';
+    const d=await post({action:"match_regime"});
+    const items=d.analyses||[];
+    const cur=(d.current||[]).flatMap(f=>(f.points||[]).slice(0,1).map(p=>`${p.label} ${p.value}${p.unit==="%"?"%":""}`)).slice(0,6).join(" · ");
+    const bar=`<div class="curbar">Today: ${cur||"(no live feeds)"}</div>`;
+    if(!items.length){list.innerHTML=bar+'<div class="libempty">No saved analyses with a comparable snapshot yet.</div>';return;}
+    list.innerHTML=bar+items.map(a=>{
+      const s=a.match.similarity, cls=s>=75?"hi":s>=45?"mid":"lo";
+      const deltas=(a.match.deltas||[]).slice(0,3).map(fmtDelta).join("  ");
+      return `<div class="libitem" onclick="libOpen('${a.id}')">`+
+        `<div class="libhead"><span class="sim ${cls}">${s}%</span><span class="q">${escapeHtml(a.question||"(untitled)")}</span></div>`+
+        `<div class="m"><span>${new Date(a.created_at).toLocaleDateString()}</span><span>${a.domain||""}</span><span>${a.match.shared} shared signals</span>${a.note?`<span>📝 ${escapeHtml(a.note)}</span>`:""}</div>`+
+        `<div class="deltas">${deltas}</div></div>`;
+    }).join("");
+  }
   async function libLoad(query){
     const list=document.getElementById("liblist");
     list.innerHTML='<div class="libempty">loading…</div>';
