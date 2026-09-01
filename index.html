@@ -104,6 +104,25 @@
   .deltas .up{color:var(--good);} .deltas .dn{color:var(--bad);}
   .curbar{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-family:var(--mono);font-size:12px;color:var(--dim);}
 
+  /* journal */
+  .jform{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px;}
+  .jgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;}
+  .jgrid label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;}
+  .jgrid input,.jgrid select,.jgrid textarea{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:7px 9px;font:inherit;font-size:13px;outline:none;}
+  .jgrid input:focus,.jgrid select:focus,.jgrid textarea:focus{border-color:var(--accent);}
+  .jgrid .wide{grid-column:1/-1;}
+  .jcheck{flex-direction:row!important;align-items:center;gap:8px;text-transform:none;}
+  .guard{margin:12px 0;padding:10px 12px;border-radius:8px;font-size:13px;font-family:var(--mono);display:none;}
+  .guard.ok{display:block;background:rgba(85,209,135,.1);border:1px solid var(--good);color:var(--good);}
+  .guard.warn{display:block;background:rgba(226,179,65,.12);border:1px solid var(--warn);color:var(--warn);}
+  .guard.danger{display:block;background:rgba(226,109,109,.12);border:1px solid var(--bad);color:var(--bad);}
+  .jentry{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 15px;margin-bottom:10px;}
+  .jentry .top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .jentry .dir{font-family:var(--mono);font-weight:700;padding:2px 9px;border-radius:6px;font-size:12px;}
+  .jentry .dir.long{background:rgba(85,209,135,.15);color:var(--good);} .jentry .dir.short{background:rgba(226,109,109,.15);color:var(--bad);}
+  .jentry .nums{font-family:var(--mono);font-size:12px;color:var(--dim);margin-top:6px;display:flex;gap:14px;flex-wrap:wrap;}
+  .jentry .txt{font-size:13px;color:var(--text);margin-top:6px;} .jentry .del{margin-left:auto;}
+
   /* modal */
   .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;align-items:flex-start;justify-content:center;overflow-y:auto;}
   .overlay.show{display:flex;}
@@ -118,6 +137,7 @@
   <div class="nav">
     <button id="nav-chat" class="on" onclick="showView('chat')">Chat</button>
     <button id="nav-lib" onclick="showView('lib')">Library</button>
+    <button id="nav-journal" onclick="showView('journal')">Journal</button>
   </div>
   <div class="meter"><span id="meter">0 questions · <span class="cost">$0.0000</span></span></div>
   <button class="clear" onclick="clearSession()">clear</button>
@@ -152,6 +172,31 @@
     </div>
     <input class="libsearch" id="libsearch" placeholder="Search saved analyses by finding, question, or note…" oninput="libSearchDebounced()" />
     <div id="liblist"><div class="libempty">loading…</div></div>
+  </div>
+
+  <!-- JOURNAL VIEW -->
+  <div class="wrap" id="view-journal" style="display:none">
+    <div class="jform">
+      <div class="jgrid">
+        <label>Instrument<input id="j-instrument" placeholder="BTC-PERP" /></label>
+        <label>Direction<select id="j-direction"><option value="long">long</option><option value="short">short</option></select></label>
+        <label>Entry<input id="j-entry" type="number" step="any" oninput="guard()" /></label>
+        <label>Exit<input id="j-exit" type="number" step="any" /></label>
+        <label>Leverage<input id="j-leverage" type="number" step="any" oninput="guard()" /></label>
+        <label>Liquidation<input id="j-liquidation" type="number" step="any" oninput="guard()" /></label>
+        <label>Result (PnL)<input id="j-result" type="number" step="any" /></label>
+        <label>Timeframe alignment<input id="j-timeframe_alignment" placeholder="6H+1H / 15m+3m" /></label>
+        <label>Catalyst<input id="j-catalyst" /></label>
+        <label class="jcheck">Respected liquidity target<input id="j-respected_liquidity_target" type="checkbox" /></label>
+        <label class="wide">Setup thesis<textarea id="j-setup_thesis" rows="2"></textarea></label>
+        <label class="wide">Invalidation<textarea id="j-invalidation" rows="2"></textarea></label>
+        <label class="wide">Psychology notes<textarea id="j-psychology_notes" rows="2"></textarea></label>
+        <label class="wide">Lesson<textarea id="j-lesson" rows="2"></textarea></label>
+      </div>
+      <div class="guard" id="guard"></div>
+      <div class="row"><button class="go" onclick="journalAdd()">＋ Log trade</button></div>
+    </div>
+    <div id="jlist"><div class="libempty">loading…</div></div>
   </div>
 </div>
 
@@ -220,6 +265,7 @@
     return `<div class="actions">`+
       `<button class="act ${m.saved?'saved':''}" onclick="saveAnalysis(${i})">${m.saved?'✓ saved':'★ save'}</button>`+
       `<button class="act" onclick="copyMd(${i})">⧉ copy</button>`+
+      `<button class="act" onclick="speak(${i})">🔊 read</button>`+
       `<button class="act" onclick="exportMd(${i})">⭳ export .md</button></div>`;
   }
 
@@ -357,10 +403,71 @@
   function showView(v){
     document.getElementById("view-chat").style.display=v==="chat"?"block":"none";
     document.getElementById("view-lib").style.display=v==="lib"?"block":"none";
+    document.getElementById("view-journal").style.display=v==="journal"?"block":"none";
     document.getElementById("composer").style.display=v==="chat"?"block":"none";
     document.getElementById("nav-chat").classList.toggle("on",v==="chat");
     document.getElementById("nav-lib").classList.toggle("on",v==="lib");
+    document.getElementById("nav-journal").classList.toggle("on",v==="journal");
     if(v==="lib") libReload();
+    if(v==="journal") journalLoad();
+  }
+
+  // ---- trading journal (Phase 5.13) ----
+  const JF=["instrument","direction","entry","exit","leverage","liquidation","result","timeframe_alignment","catalyst","setup_thesis","invalidation","psychology_notes","lesson"];
+  function jval(f){const el=document.getElementById("j-"+f);return el?el.value.trim():"";}
+  function guard(){
+    const g=document.getElementById("guard");
+    const entry=parseFloat(jval("entry")),liq=parseFloat(jval("liquidation")),lev=parseFloat(jval("leverage"));
+    if(!lev){g.className="guard";g.textContent="";return;}
+    // leverage guardrail: never let extreme leverage pass without a liquidation level
+    if(!liq){g.className="guard warn";g.textContent=`⚠ Leverage ${lev}× with no liquidation level. Set liquidation, fee drag, and downside before sizing — this block is required, not optional.`;return;}
+    if(entry){
+      const dist=Math.abs(entry-liq)/entry*100;
+      const cls=dist<3?"danger":dist<8?"warn":"ok";
+      g.className="guard "+cls;
+      g.textContent=`Liquidation ${dist.toFixed(1)}% from entry at ${lev}× leverage.`+(cls!=="ok"?"  A move of this size is common intraday — account for fee drag and worst-case downside.":"  Still confirm fee drag and downside sensitivity.");
+    }
+  }
+  async function journalAdd(){
+    const entry={respected_liquidity_target:document.getElementById("j-respected_liquidity_target").checked};
+    for(const f of JF){const v=jval(f); if(v!=="") entry[f]=v;}
+    if(!entry.instrument||!entry.direction){toast("instrument and direction required");return;}
+    const r=await post({action:"journal_add",entry});
+    if(r.id){toast("trade logged");for(const f of JF){const el=document.getElementById("j-"+f);if(el)el.value="";}document.getElementById("j-respected_liquidity_target").checked=false;guard();journalLoad();}
+    else toast("failed: "+(r.error||""));
+  }
+  async function journalLoad(){
+    const list=document.getElementById("jlist");
+    list.innerHTML='<div class="libempty">loading…</div>';
+    const d=await post({action:"journal_list"});
+    const items=d.entries||[];
+    if(!items.length){list.innerHTML='<div class="libempty">No trades logged yet.</div>';return;}
+    list.innerHTML=items.map(e=>{
+      const dir=(e.direction||"").toLowerCase();
+      const liqDist=(e.entry&&e.liquidation)?` · liq ${(Math.abs(e.entry-e.liquidation)/e.entry*100).toFixed(1)}% away`:"";
+      const nums=[e.entry!=null?`entry ${e.entry}`:"",e.exit!=null?`exit ${e.exit}`:"",e.leverage!=null?`${e.leverage}×`:"",e.result!=null?`PnL ${e.result}`:""].filter(Boolean).join(" · ");
+      return `<div class="jentry"><div class="top">`+
+        `<span class="dir ${dir}">${escapeHtml(e.direction||"")}</span><b>${escapeHtml(e.instrument||"")}</b>`+
+        `<span style="color:var(--dim);font-family:var(--mono);font-size:11px">${new Date(e.traded_at).toLocaleString()}</span>`+
+        `<button class="act del" onclick="journalDelete('${e.id}')">🗑</button></div>`+
+        `<div class="nums">${escapeHtml(nums)}${liqDist}${e.respected_liquidity_target===false?' · <span style="color:var(--bad)">missed liq target</span>':e.respected_liquidity_target?' · ✓ liq target':''}</div>`+
+        (e.setup_thesis?`<div class="txt"><b>Setup:</b> ${escapeHtml(e.setup_thesis)}</div>`:"")+
+        (e.lesson?`<div class="txt"><b>Lesson:</b> ${escapeHtml(e.lesson)}</div>`:"")+
+        `</div>`;
+    }).join("");
+  }
+  async function journalDelete(id){if(!confirm("Delete this trade?"))return;await post({action:"journal_delete",id});journalLoad();}
+
+  // ---- read aloud (Phase 12.3) ----
+  let speaking=false;
+  function plainText(md){return (md||"").replace(/[#*`>|_]/g," ").replace(/\[(.*?)\]\(.*?\)/g,"$1").replace(/\s+/g," ").trim();}
+  function speak(i){
+    if(!("speechSynthesis" in window)){toast("speech not supported");return;}
+    if(speaking){window.speechSynthesis.cancel();speaking=false;return;}
+    const u=new SpeechSynthesisUtterance(plainText(messages[i].text).slice(0,6000));
+    u.rate=1.05; u.onend=()=>speaking=false;
+    speaking=true; window.speechSynthesis.speak(u);
+    toast("reading… (click 🔊 again to stop)");
   }
 
   // ---- library ----
