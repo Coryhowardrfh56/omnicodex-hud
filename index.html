@@ -64,6 +64,8 @@
   .badge.dom{color:var(--accent);border-color:var(--accent);cursor:pointer;}
   .chip{font-family:var(--mono);font-size:10px;color:var(--dim);background:var(--panel2);border-radius:5px;padding:2px 7px;}
   .cost{color:var(--good);}
+  .suggest{margin:8px 0 0;background:rgba(110,168,255,.08);border:1px solid var(--accent);border-radius:8px;padding:8px 12px;font-size:13px;color:var(--accent);cursor:pointer;}
+  .suggest:hover{background:rgba(110,168,255,.15);} .suggest .s{font-family:var(--mono);font-weight:700;}
   .actions{display:flex;gap:8px;margin-top:8px;}
   .act{background:none;border:1px solid var(--line);color:var(--dim);border-radius:6px;padding:4px 10px;cursor:pointer;font:inherit;font-size:12px;}
   .act:hover{color:var(--text);border-color:var(--accent);}
@@ -209,7 +211,8 @@
     const t=document.getElementById("thread");
     t.innerHTML=messages.map((m,i)=>{
       if(m.role==="user") return `<div class="msg user"><div class="bubble">${escapeHtml(m.text)}</div></div>`;
-      return `<div class="msg"><div class="answer">${highlight(marked.parse(m.text))}</div>${m.metaHtml||""}${actionBar(i,m)}</div>`;
+      const sug=m.suggestion?`<div class="suggest" onclick="libOpen('${m.suggestion.id}')">◎ You analyzed a similar regime <span class="s">(${m.suggestion.similarity}% match)</span> on ${new Date(m.suggestion.created_at).toLocaleDateString()}: “${escapeHtml((m.suggestion.question||"").slice(0,90))}” — re-read →</div>`:"";
+      return `<div class="msg"><div class="answer">${highlight(marked.parse(m.text))}</div>${sug}${m.metaHtml||""}${actionBar(i,m)}</div>`;
     }).join("");
     document.getElementById("examples").style.display=messages.length?"none":"flex";
   }
@@ -290,11 +293,32 @@
         messages.push({role:"assistant",text:d.answer||"(empty)",metaHtml:metaBar(d),
           raw:{question:q,domain:d.routing?.domain,tier:d.tier,model:d.model,selection:d.selection,usage:d.usage,feeds:d.feeds}});
         loadFeeds();
+        maybeSuggest(messages.length-1,q); // fire-and-forget regime auto-suggest
       }
       renderThread();renderMeter();save();scrollDown();
     }catch(e){document.getElementById(tid)?.remove();messages.push({role:"assistant",text:"**Error:** "+e});renderThread();save();}
     finally{go.disabled=false;}
   }
+  // ---- regime auto-suggest ----
+  const STOP=new Set(["the","and","for","what","does","how","with","that","this","from","are","now","right","given","about","into","vs","you","my","me","our","can","will","should","would","its"]);
+  function keywords(s){return new Set((s||"").toLowerCase().split(/[^a-z0-9]+/).filter(w=>w.length>3&&!STOP.has(w)));}
+  function kwOverlap(a,b){const A=keywords(a);for(const w of keywords(b))if(A.has(w))return true;return false;}
+  async function maybeSuggest(idx,question){
+    try{
+      const d=await post({action:"match_regime"});
+      const items=d.analyses||[];
+      if(!items.length) return;
+      // prefer a topically-related analysis from a similar regime; else a very
+      // strong regime match even if the topic differs (items are sim-sorted).
+      const overlap=items.find(a=>a.match.similarity>=70 && kwOverlap(question,a.question));
+      const strong=items.find(a=>a.match.similarity>=85);
+      const best=overlap||strong;
+      if(!best) return;
+      messages[idx].suggestion={id:best.id,question:best.question,similarity:best.match.similarity,created_at:best.created_at};
+      save();renderThread();
+    }catch{}
+  }
+
   function dailyBrief(){
     ask("Give me today's macro brief from the live feeds: yields & Fed funds, the dollar, oil, BTC/ETH, and stablecoin supply. Lead with the executive read, then the cross-asset picture, then what to watch. Be explicit about what is NOT connected.");
   }
