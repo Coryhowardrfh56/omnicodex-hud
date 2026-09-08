@@ -64,6 +64,10 @@
   .badge.dom{color:var(--accent);border-color:var(--accent);cursor:pointer;}
   .chip{font-family:var(--mono);font-size:10px;color:var(--dim);background:var(--panel2);border-radius:5px;padding:2px 7px;}
   .cost{color:var(--good);}
+  .grounded{margin:8px 0 2px;font-size:12px;color:var(--dim);display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
+  .grounded .glabel{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint,#5b6883);}
+  .gchip{font-size:11px;color:var(--teal);background:rgba(79,214,196,.1);border:1px solid rgba(79,214,196,.35);border-radius:14px;padding:3px 9px;cursor:pointer;}
+  .gchip:hover{background:rgba(79,214,196,.2);}
   .suggest{margin:8px 0 0;background:rgba(110,168,255,.08);border:1px solid var(--accent);border-radius:8px;padding:8px 12px;font-size:13px;color:var(--accent);cursor:pointer;}
   .suggest:hover{background:rgba(110,168,255,.15);} .suggest .s{font-family:var(--mono);font-weight:700;}
   .actions{display:flex;gap:8px;margin-top:8px;}
@@ -335,12 +339,25 @@
   function metaBar(d){
     const sel=d.selection||{},u=d.usage||{};
     const chips=(sel.protocols||[]).map(p=>`<span class="chip">${p}</span>`).join(" ");
+    // grounded-in: unique library docs with their best match %
+    const lib={};
+    for(const l of (d.library||[])){ if(!(l.filename in lib)||l.similarity>lib[l.filename]) lib[l.filename]=l.similarity; }
+    const gchips=Object.entries(lib).sort((a,b)=>b[1]-a[1]).map(([fn,s])=>{
+      const label=fn.replace(/_/g," ").replace(/\.(pdf|docx)$/i,"").replace(/ Canonical.*$/,"").slice(0,44);
+      return `<span class="gchip" onclick="openArchiveDoc('${fn.replace(/'/g,"\\'")}')">📄 ${escapeHtml(label)} · ${(s*100).toFixed(0)}%</span>`;
+    }).join(" ");
     return `<div class="meta">`+
       `<span class="badge dom" onclick="domainLens('${d.routing?.domain||""}')">${d.routing?.domain||"?"}</span>`+
       `<span class="badge">${d.tier} · ${d.model||""}</span>`+
       (sel.questionTypes?.length?`<span class="badge">${sel.questionTypes.join(", ")}</span>`:"")+
       `<span class="badge cost">$${(u.estimatedCostUsd??0).toFixed(4)} · ${u.inputTokens||0}in/${u.outputTokens||0}out</span>`+
-      (chips?`<div style="flex-basis:100%;margin-top:5px">${chips}</div>`:"")+`</div>`;
+      (chips?`<div style="flex-basis:100%;margin-top:5px">${chips}</div>`:"")+`</div>`+
+      (gchips?`<div class="grounded"><span class="glabel">grounded in</span>${gchips}</div>`:"");
+  }
+  function openArchiveDoc(fn){
+    document.getElementById("a-target").value=fn;
+    showView("archive");
+    archSearch();
   }
 
   async function ask(prefill){
