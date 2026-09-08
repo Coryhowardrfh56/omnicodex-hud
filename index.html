@@ -180,6 +180,7 @@
     <div class="striptop" style="margin-bottom:12px">
       <div class="nav">
         <button id="lm-recent" class="on" onclick="libSetMode('recent')">Recent</button>
+        <button id="lm-briefs" onclick="libSetMode('briefs')">📄 Briefs</button>
         <button id="lm-regime" onclick="libSetMode('regime')">◎ Match today's regime</button>
       </div>
     </div>
@@ -303,7 +304,8 @@
       `<button class="act ${m.saved?'saved':''}" onclick="saveAnalysis(${i})">${m.saved?'✓ saved':'★ save'}</button>`+
       `<button class="act" onclick="copyMd(${i})">⧉ copy</button>`+
       `<button class="act" onclick="speak(${i})">🔊 read</button>`+
-      `<button class="act" onclick="exportMd(${i})">⭳ export .md</button></div>`;
+      `<button class="act" onclick="exportMd(${i})">⭳ .md</button>`+
+      `<button class="act" onclick="answerPDF(${i})">📄 PDF</button></div>`;
   }
 
   function setTier(t){tier=t;
@@ -428,8 +430,14 @@
     }catch{}
   }
 
-  function dailyBrief(){
-    ask("Give me today's macro brief from the live feeds: yields & Fed funds, the dollar, oil, BTC/ETH, and stablecoin supply. Lead with the executive read, then the cross-asset picture, then what to watch. Be explicit about what is NOT connected.");
+  async function dailyBrief(){
+    await ask("Give me today's macro brief from the live feeds: yields & Fed funds, the dollar, oil, BTC/ETH, and stablecoin supply. Lead with the executive read, then the cross-asset picture, then what to watch. Be explicit about what is NOT connected.");
+    // auto-save so manually-generated briefs become documents too (cron saves the scheduled ones)
+    const i = messages.length - 1;
+    if (messages[i]?.role === "assistant" && messages[i].raw) {
+      await saveAnalysis(i, "Daily brief (manual) — " + new Date().toLocaleDateString());
+      toast("brief saved to Library");
+    }
   }
   function scrollDown(){const s=document.querySelector(".scroll");s.scrollTop=s.scrollHeight;}
 
@@ -440,13 +448,41 @@
     const blob=new Blob([m.text],{type:"text/markdown"});
     const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`omnicodex_${q}.md`;a.click();
   }
-  async function saveAnalysis(i){
-    const m=messages[i]; if(!m.raw){toast("nothing to save");return;}
-    const note=prompt("Optional note — why save this / what situation does it capture?")||null;
+  // Export any document as a clean, printable PDF (Save as PDF in the print
+  // dialog) — light-themed, vector text, good for reference and sending.
+  function toPDF(title, metaLine, bodyHtml, extraHtml){
+    const w=window.open("","_blank");
+    if(!w){toast("allow pop-ups to export PDF");return;}
+    const css="body{font:14px/1.65 Georgia,'Times New Roman',serif;color:#141414;max-width:760px;margin:36px auto;padding:0 28px}"+
+      ".brand{font:600 11px ui-monospace,Menlo,monospace;letter-spacing:2px;text-transform:uppercase;color:#8892a6}"+
+      "h1{font-size:22px;margin:6px 0 2px} h2{font-size:16px;color:#1a3a6b;border-top:1px solid #e2e6ee;padding-top:14px;margin-top:22px}"+
+      "h3{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:#5a6270}"+
+      "table{border-collapse:collapse;width:100%;margin:10px 0;font-size:12.5px} th,td{border:1px solid #cfd6e2;padding:6px 9px;text-align:left} th{background:#f2f4f8}"+
+      "code{background:#f2f4f8;padding:1px 4px;border-radius:3px;font-size:12.5px} blockquote{border-left:3px solid #cfd6e2;margin:0;padding-left:12px;color:#5a6270}"+
+      ".dmeta{color:#6a7180;font-size:12px;margin:2px 0 16px;border-bottom:1px solid #e2e6ee;padding-bottom:12px}"+
+      ".lbl{font-family:ui-monospace,Menlo,monospace;font-size:11px;font-weight:700;padding:1px 5px;border-radius:3px}"+
+      ".lbl.v{background:#e5f6ec;color:#1f9d57}.lbl.i{background:#e8f0ff;color:#2f6bd8}.lbl.u{background:#f1e9ff;color:#7b46c9}.lbl.m{background:#fbf1d8;color:#a9812a}"+
+      "@page{margin:16mm} @media print{a{color:#141414;text-decoration:none}}";
+    w.document.write("<!doctype html><html><head><meta charset='utf-8'><title>"+title.replace(/[<>]/g,"")+
+      "</title><style>"+css+"</style></head><body><div class='brand'>Sovereign Omnicodex</div><h1>"+
+      title.replace(/[<>]/g,"")+"</h1><div class='dmeta'>"+metaLine+"</div>"+(extraHtml||"")+bodyHtml+
+      "<script>window.onload=function(){setTimeout(function(){window.print();},350);};<\/script></body></html>");
+    w.document.close();
+  }
+  function answerPDF(i){
+    const m=messages[i]; const r=m.raw||{};
+    const title=(r.question||"Omnicodex analysis").slice(0,120);
+    const meta=[r.domain, r.model||r.tier, new Date().toLocaleString()].filter(Boolean).join(" · ");
+    toPDF(title, meta, highlight(marked.parse(m.text)));
+  }
+  async function saveAnalysis(i, autoNote){
+    const m=messages[i]; if(!m||!m.raw){if(autoNote===undefined)toast("nothing to save");return;}
+    if(m.saved) return;
+    const note = autoNote!==undefined ? autoNote : (prompt("Optional note — why save this / what situation does it capture?")||null);
     const r=m.raw;
     const res=await post({action:"save_analysis",question:r.question,domain:r.domain,tier:r.tier,model:r.model,
       answer_md:m.text,feeds_snapshot:r.feeds,selection:r.selection,usage:r.usage,note});
-    if(res.id){m.saved=true;save();renderThread();toast("saved to library");}else{toast("save failed: "+(res.error||""));}
+    if(res.id){m.saved=true;save();renderThread();if(autoNote===undefined)toast("saved to library");}else if(autoNote===undefined){toast("save failed: "+(res.error||""));}
   }
   function toast(msg){
     const t=document.createElement("div");t.textContent=msg;
@@ -575,14 +611,20 @@
 
   // ---- library ----
   let libTimer, libMode="recent";
+  let libOpened=null;
   function libSetMode(m){
     libMode=m;
     document.getElementById("lm-recent").classList.toggle("on",m==="recent");
+    document.getElementById("lm-briefs").classList.toggle("on",m==="briefs");
     document.getElementById("lm-regime").classList.toggle("on",m==="regime");
     document.getElementById("libsearch").style.display=m==="recent"?"block":"none";
     libReload();
   }
-  function libReload(){ libMode==="regime" ? libMatchRegime() : libLoad(document.getElementById("libsearch").value); }
+  function libReload(){
+    if(libMode==="regime") return libMatchRegime();
+    if(libMode==="briefs") return libLoad("brief");
+    return libLoad(document.getElementById("libsearch").value);
+  }
   function libSearchDebounced(){clearTimeout(libTimer);libTimer=setTimeout(()=>libLoad(document.getElementById("libsearch").value),300);}
 
   function prettyDim(dim){ return dim.split(":").slice(1).join(":") || dim; }
@@ -625,6 +667,7 @@
     openModal('<div class="spinner">loading…</div>');
     const d=await post({action:"get_analysis",id});
     const a=d.analysis; if(!a){openModal("<p class='err'>not found</p>");return;}
+    libOpened=a;
     const snap=(a.feeds_snapshot||[]).map(f=>`<b>${f.title||f.key}:</b> ${(f.points||[]).map(p=>p.label+" "+p.value+(p.unit==="%"?"%":" "+p.unit)).join(", ")}`).join("<br>");
     openModal(
       `<h2>${escapeHtml(a.question||"analysis")}</h2>`+
@@ -633,8 +676,18 @@
       (a.note?`<blockquote>${escapeHtml(a.note)}</blockquote>`:"")+
       (snap?`<div class="feed" style="margin:12px 0"><h3>Live data when written</h3><div style="font-family:var(--mono);font-size:12px;line-height:1.8">${snap}</div></div>`:"")+
       `<div class="answer" style="border:none;padding:0">${highlight(marked.parse(a.answer_md||""))}</div>`+
-      `<div class="actions"><button class="act" onclick="libDelete('${a.id}')">🗑 delete</button></div>`
+      `<div class="actions"><button class="act" onclick="libPDF()">📄 PDF</button>`+
+      `<button class="act" onclick="copyLib()">⧉ copy</button>`+
+      `<button class="act" onclick="libDelete('${a.id}')">🗑 delete</button></div>`
     );
+  }
+  function copyLib(){ if(libOpened) { navigator.clipboard.writeText(libOpened.answer_md||""); toast("copied"); } }
+  function libPDF(){
+    const a=libOpened; if(!a)return;
+    const meta=[new Date(a.created_at).toLocaleString(), a.domain, a.model||a.tier].filter(Boolean).join(" · ");
+    const snap=(a.feeds_snapshot||[]).map(f=>`<b>${f.title||f.key}:</b> ${(f.points||[]).map(p=>p.label+" "+p.value+(p.unit==="%"?"%":" "+p.unit)).join(", ")}`).join("<br>");
+    const extra=snap?`<h3>Live data when written</h3><p style="font:12px ui-monospace,Menlo,monospace;color:#5a6270">${snap}</p>`:"";
+    toPDF(a.question||"Omnicodex document", meta, highlight(marked.parse(a.answer_md||"")), extra);
   }
   async function libDelete(id){
     if(!confirm("Delete this saved analysis?"))return;
