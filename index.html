@@ -112,6 +112,9 @@
   .tier button{background:none;border:none;color:var(--dim);padding:6px 12px;border-radius:6px;cursor:pointer;font:inherit;font-size:13px;}
   .tier button.on{background:var(--panel2);color:var(--text);} .tier button.opus.on{color:var(--warn);}
   .brief{background:none;border:1px solid var(--line);color:var(--dim);border-radius:8px;padding:8px 14px;cursor:pointer;font:inherit;font-size:13px;}
+  .webbtn{background:none;border:1px solid var(--line);color:var(--dim);border-radius:8px;padding:8px 12px;cursor:pointer;font:inherit;font-size:13px;}
+  .webbtn.on{color:var(--teal);border-color:var(--teal);background:rgba(79,214,196,.1);}
+  .badge.web{color:var(--teal);border-color:rgba(79,214,196,.4);} .gchip.web{color:var(--teal);text-decoration:none;}
   .brief:hover{color:var(--text);border-color:var(--accent);}
   .hint{color:var(--dim);font-size:12px;}
   .go{margin-left:auto;background:var(--accent);color:#06101f;border:none;border-radius:8px;padding:9px 22px;font-weight:600;cursor:pointer;font:inherit;}
@@ -317,6 +320,7 @@
         <button id="t-haiku" class="on" onclick="setTier('ROUTER')">Fast · Haiku</button>
         <button id="t-opus" class="opus" onclick="setTier('SPECIALIST')">Deep · Opus ($)</button>
       </div>
+      <button id="webtoggle" class="webbtn" onclick="toggleWeb()" title="Let it verify gaps against live web sources (adds ~$0.01/search)">🌐 Web: off</button>
       <button class="brief" onclick="dailyBrief()" title="Generate a macro brief from live data">📋 Daily brief</button>
       <span class="hint" id="tierhint">Fast mode ≈ $0.01 / question</span>
       <button class="go" id="go" onclick="ask()">Ask →</button>
@@ -402,7 +406,8 @@
     METHUSELAH:"Health, biology, fitness, nutrition, recovery, longevity, addiction frameworks.",
   };
 
-  let tier = "ROUTER", messages = [], session = {count:0,cost:0};
+  let tier = "ROUTER", messages = [], session = {count:0,cost:0}, webOn = false;
+  function toggleWeb(){ webOn=!webOn; const b=document.getElementById("webtoggle"); b.textContent="🌐 Web: "+(webOn?"on":"off"); b.classList.toggle("on",webOn); }
 
   function save(){localStorage.setItem("omni_thread",JSON.stringify(messages));localStorage.setItem("omni_session",JSON.stringify(session));pushThreadDebounced();}
   function restore(){
@@ -427,16 +432,21 @@
       if(d&&d.updated_at&&Array.isArray(d.messages)&&d.messages.length){
         const serverNewer = !localTs || Date.parse(d.updated_at) > Date.parse(localTs);
         if(serverNewer){
-          messages=d.messages; if(d.session) session=d.session;
+          // adopt the server THREAD only. The "this session" counter stays local
+          // (localStorage persists it per-device); syncing it caused a fresh
+          // device to clobber the real count with 0.
+          messages=d.messages;
           threadStamp=d.updated_at; localStorage.setItem("omni_thread_ts",threadStamp);
           localStorage.setItem("omni_thread",JSON.stringify(messages));
-          localStorage.setItem("omni_session",JSON.stringify(session));
+          // keep session.count in step with the restored thread if it looks stale
+          const asked=messages.filter(m=>m.role==="assistant"&&!m.pastRef).length;
+          if((session.count||0)<asked){ session.count=asked; localStorage.setItem("omni_session",JSON.stringify(session)); }
           renderThread(); renderMeter();
         }
       }
     }catch{}
   }
-  function renderMeter(){document.getElementById("meter").innerHTML=`${session.count} this session · <span class="cost">$${session.cost.toFixed(4)}</span>`+(historyTotal!=null?` · <b>${historyTotal}</b> in library`:"");}
+  function renderMeter(){document.getElementById("meter").innerHTML=`${session.count} asked · <span class="cost">$${session.cost.toFixed(4)}</span>`+(historyTotal!=null?` · <b>${historyTotal}</b> in library`:"");}
 
   function highlight(html){
     const map=[[/\bVERIFIED\b/g,"v"],[/\bINFERENCE\b/g,"i"],[/\bUSER[ _]THESIS\b/g,"u"],[/\bMODEL[ _]PROBABILITY\b/g,"m"]];
@@ -514,13 +524,18 @@
       const label=fn.replace(/_/g," ").replace(/\.(pdf|docx)$/i,"").replace(/ Canonical.*$/,"").slice(0,44);
       return `<span class="gchip" onclick="openArchiveDoc('${fn.replace(/'/g,"\\'")}')">📄 ${escapeHtml(label)} · ${(s*100).toFixed(0)}%</span>`;
     }).join(" ");
+    const src=(d.sources||[]);
+    const schips=src.slice(0,8).map(u=>{let h;try{h=new URL(u).hostname.replace(/^www\./,"");}catch{h=u.slice(0,30);}
+      return `<a class="gchip web" href="${u.replace(/"/g,"")}" target="_blank" rel="noopener">🌐 ${escapeHtml(h)}</a>`;}).join(" ");
     return `<div class="meta">`+
       `<span class="badge dom" onclick="domainLens('${d.routing?.domain||""}')">${d.routing?.domain||"?"}</span>`+
       `<span class="badge">${d.tier} · ${d.model||""}</span>`+
       (sel.questionTypes?.length?`<span class="badge">${sel.questionTypes.join(", ")}</span>`:"")+
+      (u.webSearches?`<span class="badge web">🌐 ${u.webSearches} web search${u.webSearches>1?"es":""}</span>`:"")+
       `<span class="badge cost">$${(u.estimatedCostUsd??0).toFixed(4)} · ${u.inputTokens||0}in/${u.outputTokens||0}out</span>`+
       (chips?`<div style="flex-basis:100%;margin-top:5px">${chips}</div>`:"")+`</div>`+
       (gchips?`<div class="grounded"><span class="glabel">grounded in</span>${gchips}</div>`:"")+
+      (schips?`<div class="grounded"><span class="glabel">web sources</span>${schips}</div>`:"")+
       learnRow(d);
   }
   // L1–L4 learning signals surfaced under each answer.
@@ -554,7 +569,7 @@
     scrollDown();
     const history=messages.slice(0,-1).slice(-HISTORY_TURNS).map(m=>({role:m.role,content:m.text}));
     try{
-      const d=await post({message:q,tier,history});
+      const d=await post({message:q,tier,history,web:webOn});
       document.getElementById(tid)?.remove();
       if(d.error){messages.push({role:"assistant",text:"**Error:** "+d.error});}
       else{
