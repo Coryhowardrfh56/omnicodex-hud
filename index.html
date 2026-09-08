@@ -141,9 +141,42 @@
   .modal{background:var(--panel);border:1px solid var(--line);border-radius:12px;max-width:820px;width:92%;margin:48px 0;padding:20px 26px;}
   .modal .x{float:right;background:none;border:none;color:var(--dim);font-size:20px;cursor:pointer;}
   .modal h2{margin-top:4px;color:var(--accent);}
+  /* auth gate */
+  #authgate{position:fixed;inset:0;z-index:200;background:radial-gradient(900px 500px at 70% -10%,#16213a 0%,var(--bg) 60%);display:none;align-items:center;justify-content:center;}
+  #authgate.show{display:flex;}
+  .authbox{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:34px 32px;width:360px;max-width:92%;box-shadow:0 20px 60px rgba(0,0,0,.4);}
+  .authbox h1{font-size:19px;margin:0 0 4px;letter-spacing:.5px;}
+  .authbox .amsg{color:var(--dim);font-size:13px;margin:0 0 18px;}
+  .authbox input{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:12px 13px;font:inherit;outline:none;margin-bottom:10px;}
+  .authbox input:focus{border-color:var(--accent);}
+  #auth-code{font-family:var(--mono);font-size:20px;letter-spacing:6px;text-align:center;}
+  .authbox button.go{width:100%;margin:0;}
+  .authbox .err{color:var(--bad);font-size:12px;min-height:16px;margin-top:8px;}
+  .authbox .muted{color:var(--dim);font-size:12px;text-align:center;margin-top:14px;cursor:pointer;}
+  .authbox .muted:hover{color:var(--text);}
+  .authbox .foot{color:var(--faint,#5b6883);font-size:11px;text-align:center;margin-top:16px;}
+  .logout{background:none;border:1px solid var(--line);color:var(--dim);border-radius:6px;padding:5px 10px;cursor:pointer;font:inherit;font-size:12px;}
+  .logout:hover{color:var(--text);}
 </style>
 </head>
 <body>
+<div id="authgate">
+  <div class="authbox">
+    <h1>⌘ SOVEREIGN OMNICODEX</h1>
+    <div class="amsg" id="authmsg">Sign in with your email — we'll send a one-time code.</div>
+    <div id="step-email">
+      <input id="auth-email" type="email" placeholder="you@email.com" autocomplete="email" onkeydown="if(event.key==='Enter')sendCode()" />
+      <button class="go" onclick="sendCode()">Send code</button>
+    </div>
+    <div id="step-code" style="display:none">
+      <input id="auth-code" inputmode="numeric" placeholder="000000" onkeydown="if(event.key==='Enter')verifyCode()" />
+      <button class="go" onclick="verifyCode()">Verify &amp; enter</button>
+      <div class="muted" onclick="backToEmail()">use a different email</div>
+    </div>
+    <div class="err" id="autherr"></div>
+    <div class="foot">Private — access is restricted to authorized accounts.</div>
+  </div>
+</div>
 <header>
   <h1>⌘ OMNICODEX</h1>
   <div class="nav">
@@ -154,6 +187,7 @@
   </div>
   <div class="meter"><span id="meter">0 questions · <span class="cost">$0.0000</span></span></div>
   <button class="clear" onclick="clearSession()">clear</button>
+  <button class="logout" onclick="logout()">sign out</button>
 </header>
 
 <div class="scroll">
@@ -264,6 +298,53 @@
   const ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh2c3RwdGhkeHpmeGNpbHlxeWZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwNTEyNzcsImV4cCI6MjEwMjYyNzI3N30.CsmryXwxpkJur9Gbc8xcUr6F2X2e7rcaDhAWCupHfsE"; // publishable Supabase anon key (RLS-protected)
   const HISTORY_TURNS = 6;
 
+  // ---- auth (Supabase email OTP; server enforces allowlisted users) ----
+  const SUPA = "https://hvstpthdxzfxcilyqyfo.supabase.co";
+  let authSession = null;
+  function loadSession(){ try{authSession=JSON.parse(localStorage.getItem("omni_auth")||"null");}catch{authSession=null;} }
+  function saveSession(s){ authSession=s; localStorage.setItem("omni_auth",JSON.stringify(s)); }
+  function sessionValid(){ return !!authSession?.access_token && (authSession.expires_at*1000 - 60000) > Date.now(); }
+  async function authFetch(path, body){
+    const r=await fetch(SUPA+path,{method:"POST",headers:{"apikey":ANON,"Content-Type":"application/json"},body:JSON.stringify(body)});
+    return {status:r.status, data:await r.json().catch(()=>({}))};
+  }
+  async function sendCode(){
+    const email=document.getElementById("auth-email").value.trim().toLowerCase();
+    const err=document.getElementById("autherr"); err.textContent="";
+    if(!email){err.textContent="enter your email";return;}
+    const {data}=await authFetch("/auth/v1/otp",{email,create_user:false});
+    if(data.error||data.msg||data.error_code){ err.textContent=data.msg||data.error_description||"couldn't send a code to that email"; return; }
+    window._authEmail=email;
+    document.getElementById("step-email").style.display="none";
+    document.getElementById("step-code").style.display="block";
+    document.getElementById("authmsg").textContent="Enter the 6-digit code we emailed to "+email+".";
+    document.getElementById("auth-code").focus();
+  }
+  async function verifyCode(){
+    const code=document.getElementById("auth-code").value.trim();
+    const err=document.getElementById("autherr"); err.textContent="";
+    const {data}=await authFetch("/auth/v1/verify",{type:"email",email:window._authEmail,token:code});
+    if(!data.access_token){ err.textContent=data.msg||data.error_description||"invalid or expired code"; return; }
+    saveSession({access_token:data.access_token,refresh_token:data.refresh_token,expires_at:data.expires_at,email:window._authEmail});
+    enterApp();
+  }
+  function backToEmail(){ document.getElementById("step-code").style.display="none"; document.getElementById("step-email").style.display="block"; document.getElementById("autherr").textContent=""; document.getElementById("authmsg").textContent="Sign in with your email — we'll send a one-time code."; }
+  async function tryRefresh(){
+    if(!authSession?.refresh_token) return false;
+    const {data}=await authFetch("/auth/v1/token?grant_type=refresh_token",{refresh_token:authSession.refresh_token});
+    if(data.access_token){ saveSession({access_token:data.access_token,refresh_token:data.refresh_token,expires_at:data.expires_at,email:authSession.email}); return true; }
+    return false;
+  }
+  function logout(){ authSession=null; localStorage.removeItem("omni_auth"); location.reload(); }
+  function enterApp(){ document.getElementById("authgate").classList.remove("show"); restore(); loadFeeds(); }
+  async function initAuth(){
+    loadSession();
+    if(sessionValid()){ enterApp(); return; }
+    if(authSession && await tryRefresh() && sessionValid()){ enterApp(); return; }
+    document.getElementById("authgate").classList.add("show");
+    document.getElementById("auth-email").focus();
+  }
+
   const DOMAINS = {
     HERMES:"Control plane. Routes every request, governs the registry, runs archaeology, produces snapshots, resolves aliases. Never performs domain analysis itself.",
     PROMETHEUS:"Live economics, markets, crypto, capital, AI infrastructure. Owns all current macro. The only domain with live-data feeds.",
@@ -316,7 +397,9 @@
   function fill(el){document.getElementById("q").value=el.textContent;document.getElementById("q").focus();}
 
   async function post(body){
-    const r=await fetch(ENDPOINT,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+ANON},body:JSON.stringify(body)});
+    const go=()=>fetch(ENDPOINT,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+(authSession?.access_token||ANON)},body:JSON.stringify(body)});
+    let r=await go();
+    if(r.status===401 && authSession){ if(await tryRefresh()){ r=await go(); } else { logout(); return {error:"session expired"}; } }
     return r.json();
   }
 
@@ -696,7 +779,7 @@
 
   document.getElementById("q").addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&e.key==="Enter")ask();});
   document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();});
-  restore();loadFeeds();
+  initAuth();
 </script>
 </body>
 </html>
