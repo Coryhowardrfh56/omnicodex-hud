@@ -532,6 +532,7 @@
       `<span class="badge">${d.tier} · ${d.model||""}</span>`+
       (sel.questionTypes?.length?`<span class="badge">${sel.questionTypes.join(", ")}</span>`:"")+
       (u.webSearches?`<span class="badge web">🌐 ${u.webSearches} web search${u.webSearches>1?"es":""}</span>`:"")+
+      (d.webFailed?`<span class="badge" style="color:var(--warn)">🌐 web unavailable — answered without it</span>`:(d.webRequested&&!u.webSearches?`<span class="badge">🌐 web on · no gaps needed searching</span>`:""))+
       `<span class="badge cost">$${(u.estimatedCostUsd??0).toFixed(4)} · ${u.inputTokens||0}in/${u.outputTokens||0}out</span>`+
       (chips?`<div style="flex-basis:100%;margin-top:5px">${chips}</div>`:"")+`</div>`+
       (gchips?`<div class="grounded"><span class="glabel">grounded in</span>${gchips}</div>`:"")+
