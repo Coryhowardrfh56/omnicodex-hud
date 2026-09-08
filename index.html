@@ -82,6 +82,20 @@
   .act{background:none;border:1px solid var(--line);color:var(--dim);border-radius:6px;padding:4px 10px;cursor:pointer;font:inherit;font-size:12px;}
   .act:hover{color:var(--text);border-color:var(--accent);}
   .act.saved{color:var(--good);border-color:var(--good);}
+  .act.cont{color:var(--accent);border-color:var(--accent);}
+  .pastref{font-size:11px;color:var(--dim);margin:0 0 4px;letter-spacing:.03em;text-transform:uppercase;opacity:.8;}
+  .tchips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+  .tchip{display:inline-flex;align-items:center;gap:4px;background:var(--panel2);border:1px solid var(--line);color:var(--dim);border-radius:20px;padding:2px 10px;font-size:11px;}
+  .tagrow{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0;align-items:center;}
+  .tchip.rm{cursor:pointer;} .tchip.rm:hover{color:var(--text);border-color:var(--bad,#e06c75);}
+  .tchip.add{cursor:pointer;background:none;color:var(--accent);border:1px dashed var(--accent);font:inherit;font-size:11px;}
+  .drift{border-radius:8px;padding:10px 12px;margin:12px 0;font-size:13px;border:1px solid var(--line);}
+  .drift.fresh{background:rgba(80,200,120,.08);border-color:var(--good);}
+  .drift.drifting{background:rgba(230,180,80,.09);border-color:#e0b450;}
+  .drift.stale{background:rgba(224,108,117,.09);border-color:#e06c75;}
+  .drift .dh{margin-bottom:3px;} .drift .dv{color:var(--dim);margin-bottom:6px;}
+  .drift .dm{font-family:var(--mono);font-size:12px;line-height:1.7;}
+  .drift .dm .up{color:var(--good);} .drift .dm .dn{color:#e06c75;}
   .spinner{color:var(--dim);padding:8px 0;font-family:var(--mono);}
   .err{color:var(--bad);font-family:var(--mono);font-size:13px;}
   .examples{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0;}
@@ -104,7 +118,9 @@
   .go:disabled{opacity:.5;cursor:default;}
 
   /* library */
-  .libsearch{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:inherit;outline:none;margin-bottom:14px;}
+  .libsearch{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:inherit;outline:none;margin-bottom:10px;}
+  .libfilters{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+  .libfilters select{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;outline:none;cursor:pointer;}
   .libitem{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 15px;margin-bottom:10px;cursor:pointer;}
   .libitem:hover{border-color:var(--accent);}
   .libitem .q{font-weight:600;} .libitem .m{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:5px;display:flex;gap:8px;flex-wrap:wrap;}
@@ -217,9 +233,28 @@
         <button id="lm-history" onclick="libSetMode('history')">🕑 All questions</button>
         <button id="lm-briefs" onclick="libSetMode('briefs')">📄 Briefs</button>
         <button id="lm-regime" onclick="libSetMode('regime')">◎ Match today's regime</button>
+        <button id="lm-digest" onclick="weeklyDigest()">📅 Weekly digest</button>
       </div>
     </div>
     <input class="libsearch" id="libsearch" placeholder="Search saved analyses by finding, question, or note…" oninput="libSearchDebounced()" />
+    <div class="libfilters" id="libfilters">
+      <select id="fdomain" onchange="libReload()">
+        <option value="">All domains</option>
+        <option value="HERMES">Hermes</option>
+        <option value="PROMETHEUS">Prometheus</option>
+        <option value="CHRONOS">Chronos</option>
+        <option value="ICARUS">Icarus</option>
+        <option value="METHUSELAH">Methuselah</option>
+      </select>
+      <select id="fdate" onchange="libReload()">
+        <option value="">Any time</option>
+        <option value="1">Last 24h</option>
+        <option value="7">Last 7 days</option>
+        <option value="30">Last 30 days</option>
+        <option value="90">Last 90 days</option>
+      </select>
+      <select id="ftag" onchange="libReload()"><option value="">All tags</option></select>
+    </div>
     <div id="liblist"><div class="libempty">loading…</div></div>
   </div>
 
@@ -336,8 +371,8 @@
     if(data.access_token){ saveSession({access_token:data.access_token,refresh_token:data.refresh_token,expires_at:data.expires_at,email:authSession.email}); return true; }
     return false;
   }
-  function logout(){ authSession=null; localStorage.removeItem("omni_auth"); location.reload(); }
-  function enterApp(){ document.getElementById("authgate").classList.remove("show"); restore(); loadFeeds(); syncLocal(); refreshHistoryCount(); }
+  function logout(){ authSession=null; ["omni_auth","omni_thread","omni_session","omni_thread_ts"].forEach(k=>localStorage.removeItem(k)); location.reload(); }
+  async function enterApp(){ document.getElementById("authgate").classList.remove("show"); restore(); loadFeeds(); await pullThread(); syncLocal(); refreshHistoryCount(); }
   // record every answer to the server so history is durable + cross-device
   async function autoSaveAnswer(i){
     const m=messages[i]; if(!m||!m.raw||m.recordId) return;
@@ -369,13 +404,38 @@
 
   let tier = "ROUTER", messages = [], session = {count:0,cost:0};
 
-  function save(){localStorage.setItem("omni_thread",JSON.stringify(messages));localStorage.setItem("omni_session",JSON.stringify(session));}
+  function save(){localStorage.setItem("omni_thread",JSON.stringify(messages));localStorage.setItem("omni_session",JSON.stringify(session));pushThreadDebounced();}
   function restore(){
     try{messages=JSON.parse(localStorage.getItem("omni_thread")||"[]");}catch{messages=[];}
     try{session=JSON.parse(localStorage.getItem("omni_session")||'{"count":0,"cost":0}');}catch{}
     renderThread();renderMeter();
   }
   function clearSession(){messages=[];session={count:0,cost:0};save();renderThread();renderMeter();}
+  // #6 — cross-device sync of the active chat thread (last-write-wins by updated_at)
+  let pushTimer, threadStamp=null;
+  function pushThreadDebounced(){ clearTimeout(pushTimer); pushTimer=setTimeout(pushThread,1500); }
+  async function pushThread(){
+    if(!authSession) return;
+    try{ const d=await post({action:"chat_save",messages,session});
+      if(d&&d.updated_at){ threadStamp=d.updated_at; localStorage.setItem("omni_thread_ts",threadStamp); } }catch{}
+  }
+  async function pullThread(){
+    if(!authSession) return;
+    try{
+      const localTs=localStorage.getItem("omni_thread_ts")||null;
+      const d=await post({action:"chat_load"});
+      if(d&&d.updated_at&&Array.isArray(d.messages)&&d.messages.length){
+        const serverNewer = !localTs || Date.parse(d.updated_at) > Date.parse(localTs);
+        if(serverNewer){
+          messages=d.messages; if(d.session) session=d.session;
+          threadStamp=d.updated_at; localStorage.setItem("omni_thread_ts",threadStamp);
+          localStorage.setItem("omni_thread",JSON.stringify(messages));
+          localStorage.setItem("omni_session",JSON.stringify(session));
+          renderThread(); renderMeter();
+        }
+      }
+    }catch{}
+  }
   function renderMeter(){document.getElementById("meter").innerHTML=`${session.count} this session · <span class="cost">$${session.cost.toFixed(4)}</span>`+(historyTotal!=null?` · <b>${historyTotal}</b> in library`:"");}
 
   function highlight(html){
@@ -388,9 +448,10 @@
   function renderThread(){
     const t=document.getElementById("thread");
     t.innerHTML=messages.map((m,i)=>{
-      if(m.role==="user") return `<div class="msg user"><div class="bubble">${escapeHtml(m.text)}</div></div>`;
+      const ref=m.pastRef?`<div class="pastref">↩ from library${m.raw?.created_at?" · "+new Date(m.raw.created_at).toLocaleDateString():""}</div>`:"";
+      if(m.role==="user") return `<div class="msg user">${ref}<div class="bubble">${escapeHtml(m.text)}</div></div>`;
       const sug=m.suggestion?`<div class="suggest" onclick="libOpen('${m.suggestion.id}')">◎ You analyzed a similar regime <span class="s">(${m.suggestion.similarity}% match)</span> on ${new Date(m.suggestion.created_at).toLocaleDateString()}: “${escapeHtml((m.suggestion.question||"").slice(0,90))}” — re-read →</div>`:"";
-      return `<div class="msg"><div class="answer">${highlight(marked.parse(m.text))}</div>${sug}${m.metaHtml||""}${actionBar(i,m)}</div>`;
+      return `<div class="msg">${ref}<div class="answer">${highlight(marked.parse(m.text))}</div>${sug}${m.metaHtml||""}${actionBar(i,m)}</div>`;
     }).join("");
     document.getElementById("examples").style.display=messages.length?"none":"flex";
   }
@@ -573,6 +634,32 @@
     const meta=[r.domain, r.model||r.tier, new Date().toLocaleString()].filter(Boolean).join(" · ");
     toPDF(title, meta, highlight(marked.parse(m.text)));
   }
+  // #5 — assemble the week's daily briefs + pinned answers into one PDF document
+  async function fullItems(list){
+    const out=[];
+    for(const a of list){ const d=await post({action:"get_analysis",id:a.id}); if(d.analysis) out.push(d.analysis); }
+    return out;
+  }
+  async function weeklyDigest(){
+    toast("building weekly digest…");
+    const since=daysAgoISO(7);
+    const [b,p]=await Promise.all([
+      post({action:"list_analyses",tag:"daily_brief",since}),
+      post({action:"list_analyses",tag:"saved",since})
+    ]);
+    const briefs=await fullItems((b.analyses||[]).slice(0,7));
+    const pinned=await fullItems((p.analyses||[]).slice(0,12));
+    if(!briefs.length && !pinned.length){toast("nothing from the last 7 days to digest");return;}
+    const sec=(title,items)=> items.length?`<h2>${title}</h2>`+items.map(a=>
+        `<h3>${escapeHtml(a.question||"(untitled)")}</h3>`+
+        `<div class="hint" style="color:#6a7180;font-size:12px;margin:0 0 8px">${new Date(a.created_at).toLocaleString()} · ${escapeHtml(a.domain||"")}${a.note?` · 📝 ${escapeHtml(a.note)}`:""}</div>`+
+        highlight(marked.parse(a.answer_md||""))
+      ).join("<hr style='border:none;border-top:1px solid #e2e6ee;margin:20px 0'>"):"";
+    const range=new Date(Date.parse(since)).toLocaleDateString()+" – "+new Date().toLocaleDateString();
+    const meta=`Weekly digest · ${range} · ${briefs.length} brief${briefs.length===1?"":"s"} · ${pinned.length} pinned`;
+    toPDF("Omnicodex Weekly Digest", meta, sec("Daily briefs",briefs)+sec("Pinned analyses",pinned));
+    toast("digest ready — print or save as PDF");
+  }
   async function saveAnalysis(i, autoNote){
     const m=messages[i]; if(!m||!m.raw){if(autoNote===undefined)toast("nothing to save");return;}
     if(m.saved) return;
@@ -722,7 +809,10 @@
     document.getElementById("lm-history").classList.toggle("on",m==="history");
     document.getElementById("lm-briefs").classList.toggle("on",m==="briefs");
     document.getElementById("lm-regime").classList.toggle("on",m==="regime");
-    document.getElementById("libsearch").style.display=(m==="recent"||m==="history")?"block":"none";
+    const showFilters=(m==="recent"||m==="history");
+    document.getElementById("libsearch").style.display=showFilters?"block":"none";
+    document.getElementById("libfilters").style.display=showFilters?"flex":"none";
+    if(showFilters) loadTags();
     libReload();
   }
   function libReload(){
@@ -756,19 +846,36 @@
         `<div class="deltas">${deltas}</div></div>`;
     }).join("");
   }
+  function daysAgoISO(n){ const ms=Date.now()-n*86400000; return new Date(ms).toISOString(); }
+  const SYSTEM_TAGS=new Set(["chat","daily_brief","auto","saved"]);
+  function userTags(tags){ return (Array.isArray(tags)?tags:[]).filter(t=>!SYSTEM_TAGS.has(t)); }
+  async function loadTags(){
+    const sel=document.getElementById("ftag"); if(!sel) return;
+    try{
+      const d=await post({action:"list_tags"});
+      const cur=sel.value;
+      sel.innerHTML='<option value="">All tags</option>'+(d.tags||[]).map(t=>`<option value="${escapeHtml(t.tag)}">🏷 ${escapeHtml(t.tag)} (${t.count})</option>`).join("");
+      sel.value=cur; // keep selection if still present
+    }catch{}
+  }
   async function libLoad(query,tag){
     const list=document.getElementById("liblist");
     list.innerHTML='<div class="libempty">loading…</div>';
     const req={action:"list_analyses",query}; if(tag) req.tag=tag;
+    const dom=document.getElementById("fdomain")?.value; if(dom) req.domain=dom;
+    const dsel=document.getElementById("fdate")?.value; if(dsel) req.since=daysAgoISO(+dsel);
+    const ftag=document.getElementById("ftag")?.value; if(ftag) req.tag2=ftag;
     const d=await post(req);
     if(d.total!=null){ historyTotal=d.total; renderMeter(); }
     const items=d.analyses||[];
     if(!items.length){list.innerHTML='<div class="libempty">'+(tag==="chat"?"No questions recorded yet. Every answer you get is auto-saved here.":"No saved analyses yet. Save one from the ★ button under any answer.")+'</div>';return;}
     list.innerHTML=items.map(a=>{
       const feeds=(a.feeds_snapshot||[]).flatMap(f=>f.points?.slice(0,1).map(p=>`${p.label} ${p.value}${p.unit==="%"?"%":""}`)||[]).slice(0,4).join(" · ");
+      const utags=userTags(a.tags).map(t=>`<span class="tchip">🏷 ${escapeHtml(t)}</span>`).join("");
       return `<div class="libitem" onclick="libOpen('${a.id}')">`+
         `<div class="q">${escapeHtml(a.question||"(untitled)")}</div>`+
-        `<div class="m"><span>${new Date(a.created_at).toLocaleString()}</span><span>${a.domain||""} · ${a.model||a.tier||""}</span>${feeds?`<span>${feeds}</span>`:""}${a.note?`<span>📝 ${escapeHtml(a.note)}</span>`:""}</div></div>`;
+        `<div class="m"><span>${new Date(a.created_at).toLocaleString()}</span><span>${a.domain||""} · ${a.model||a.tier||""}</span>${feeds?`<span>${feeds}</span>`:""}${a.note?`<span>📝 ${escapeHtml(a.note)}</span>`:""}</div>`+
+        (utags?`<div class="tchips">${utags}</div>`:"")+`</div>`;
     }).join("");
   }
   async function libOpen(id){
@@ -782,12 +889,62 @@
       `<div class="hint">${new Date(a.created_at).toLocaleString()} · ${a.domain||""} · ${a.model||a.tier||""}`+
       `${a.usage?` · $${(a.usage.estimatedCostUsd||0).toFixed(4)}`:""}</div>`+
       (a.note?`<blockquote>${escapeHtml(a.note)}</blockquote>`:"")+
+      `<div class="tagrow" id="modaltags">${tagRowHtml(a)}</div>`+
+      `<div id="driftpanel"></div>`+
       (snap?`<div class="feed" style="margin:12px 0"><h3>Live data when written</h3><div style="font-family:var(--mono);font-size:12px;line-height:1.8">${snap}</div></div>`:"")+
       `<div class="answer" style="border:none;padding:0">${highlight(marked.parse(a.answer_md||""))}</div>`+
-      `<div class="actions"><button class="act" onclick="libPDF()">📄 PDF</button>`+
+      `<div class="actions"><button class="act cont" onclick="continueAnalysis()">↩ continue in chat</button>`+
+      `<button class="act" onclick="libPDF()">📄 PDF</button>`+
       `<button class="act" onclick="copyLib()">⧉ copy</button>`+
       `<button class="act" onclick="libDelete('${a.id}')">🗑 delete</button></div>`
     );
+    loadDrift(a.id);
+  }
+  // #4 — "what changed since I asked this": regime drift between the snapshot and now
+  async function loadDrift(id){
+    const el=document.getElementById("driftpanel"); if(!el) return;
+    try{
+      const d=await post({action:"regime_drift",id});
+      if(!el||!d||!d.hasSnapshot) return;
+      const sim=d.match.similarity, movers=(d.match.deltas||[]).slice(0,4).map(fmtDelta).join("  ");
+      const age=d.ageDays!=null?(d.ageDays<1?"today":d.ageDays<2?"yesterday":Math.round(d.ageDays)+" days ago"):"";
+      const cls=sim>=75?"fresh":sim>=45?"drifting":"stale";
+      const verdict=sim>=75?"Regime still similar — likely still relevant.":sim>=45?"Regime has drifted — re-check key assumptions.":"Regime has changed materially — treat this as possibly stale.";
+      el.innerHTML=`<div class="drift ${cls}"><div class="dh"><b>What changed since ${age}</b> · regime match <b>${sim}%</b></div>`+
+        `<div class="dv">${verdict}</div>`+(movers?`<div class="dm">${movers}</div>`:"")+`</div>`;
+    }catch{}
+  }
+  // #2 — pick up a past analysis in the live chat so a follow-up carries its full context
+  function continueAnalysis(){
+    const a=libOpened; if(!a) return;
+    closeModal();
+    messages.push({role:"user",text:a.question||"(past question)",pastRef:true,raw:{created_at:a.created_at}});
+    messages.push({role:"assistant",text:a.answer_md||"",pastRef:true,recordId:a.id,
+      raw:{question:a.question,domain:a.domain,tier:a.tier,model:a.model,feeds:a.feeds_snapshot,created_at:a.created_at}});
+    showView("chat");
+    renderThread(); save(); scrollDown();
+    const el=document.getElementById("q");
+    el.placeholder="Continue this analysis — ask your follow-up…";
+    el.focus();
+    toast("picked up from library — ask your follow-up");
+  }
+  // #3 — tags / folders on a saved analysis
+  function tagRowHtml(a){
+    const chips=userTags(a.tags).map(t=>`<span class="tchip rm" onclick="removeTag('${t.replace(/'/g,"\\'")}')">🏷 ${escapeHtml(t)} <b>×</b></span>`).join("");
+    return chips+`<button class="tchip add" onclick="addTagPrompt()">＋ tag</button>`;
+  }
+  async function addTagPrompt(){
+    const a=libOpened; if(!a) return;
+    const t=(prompt("Add a tag / folder (e.g. btc-leverage, stablecoin-thesis):")||"").trim().toLowerCase();
+    if(!t) return;
+    const res=await post({action:"update_analysis",id:a.id,addTag:t});
+    if(res.id){ a.tags=[...userTags(a.tags),t,...(a.tags||[]).filter(x=>SYSTEM_TAGS.has(x))]; document.getElementById("modaltags").innerHTML=tagRowHtml(a); loadTags(); toast("tagged"); }
+    else toast("tag failed");
+  }
+  async function removeTag(t){
+    const a=libOpened; if(!a) return;
+    const res=await post({action:"update_analysis",id:a.id,removeTag:t});
+    if(res.id){ a.tags=(a.tags||[]).filter(x=>x!==t); document.getElementById("modaltags").innerHTML=tagRowHtml(a); loadTags(); toast("tag removed"); }
   }
   function copyLib(){ if(libOpened) { navigator.clipboard.writeText(libOpened.answer_md||""); toast("copied"); } }
   function libPDF(){
