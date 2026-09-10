@@ -591,6 +591,7 @@
     if(mem) bits.push(`<span class="lchip2 mem">\u{1F9E0} recalled ${mem}</span>`);
     if(th.captured) bits.push(`<span class="lchip2 cap">＋${th.captured} thesis</span>`);
     if(th.contradictions) bits.push(`<span class="lchip2 con">⚠ ${th.contradictions} contradiction${th.contradictions>1?"s":""}</span>`);
+    if(th.weakened) bits.push(`<span class="lchip2 con">↓ ${th.weakened} weakened</span>`);
     if(th.invalidated) bits.push(`<span class="lchip2 inv">✕ ${th.invalidated} invalidated</span>`);
     return bits.length?`<div class="learn"><span class="glabel">learning</span>${bits.join("")}</div>`:"";
   }
