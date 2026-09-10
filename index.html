@@ -116,6 +116,27 @@
   .webbtn.on{color:var(--teal);border-color:var(--teal);background:rgba(79,214,196,.1);}
   .badge.web{color:var(--teal);border-color:rgba(79,214,196,.4);} .gchip.web{color:var(--teal);text-decoration:none;}
   .badge.spine{color:var(--purple,#b98cff);border-color:rgba(185,140,255,.4);}
+  /* claims panel */
+  .tgroup{margin-bottom:22px}
+  .thead{display:flex;align-items:center;gap:12px;margin:6px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+  .thead .tk{font-family:var(--mono);font-size:14px;color:var(--purple,#b98cff);font-weight:700}
+  .thead .tc{color:var(--dim);font-size:12px}
+  .claim{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px}
+  .chead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+  .chead .cid{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent)}
+  .cc{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.5px;padding:2px 7px;border-radius:20px;border:1px solid var(--line2)}
+  .cc-hard{color:var(--warn);border-color:rgba(230,182,76,.5)} .cc-suf{color:var(--good);border-color:rgba(84,214,138,.5)} .cc-soft{color:var(--dim)}
+  .conf{font-family:var(--mono);font-size:10px;color:var(--teal)}
+  .thr{font-size:11px;color:var(--faint,#5b6883)}
+  .cstmt{color:var(--text);font-size:14px;margin:2px 0 6px}
+  .cwhy{color:var(--dim);font-size:13px;margin:3px 0}
+  .cso{color:var(--dim);font-size:13px;margin:3px 0}
+  .cwhy b,.cso b{color:var(--text)}
+  .cvars{display:flex;gap:5px;flex-wrap:wrap;margin:8px 0 2px}
+  .vch{font-family:var(--mono);font-size:10px;background:var(--panel2);border:1px solid var(--line2);border-radius:12px;padding:1px 8px;color:var(--dim)}
+  .cact{display:flex;gap:8px;margin-top:8px}
+  .dcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px}
+  .dname{font-size:14px;font-weight:600} .dmeta{color:var(--dim);font-size:12px;margin:4px 0 8px}
   .brief:hover{color:var(--text);border-color:var(--accent);}
   .hint{color:var(--dim);font-size:12px;}
   .go{margin-left:auto;background:var(--accent);color:#06101f;border:none;border-radius:8px;padding:9px 22px;font-weight:600;cursor:pointer;font:inherit;}
@@ -204,6 +225,7 @@
     <button id="nav-lib" onclick="showView('lib')">Library</button>
     <button id="nav-journal" onclick="showView('journal')">Journal</button>
     <button id="nav-archive" onclick="showView('archive')">Archive</button>
+    <button id="nav-claims" onclick="showView('claims')">Claims</button>
   </div>
   <div class="meter"><span id="meter">0 questions · <span class="cost">$0.0000</span></span></div>
   <button class="clear" onclick="clearSession()">clear</button>
@@ -309,6 +331,19 @@
         <div class="row"><button class="go" onclick="archIngest()">⬆ Ingest &amp; embed</button></div>
       </div>
     </details>
+  </div>
+
+  <!-- CLAIMS VIEW (Phase 1 — claim/theory graph curation) -->
+  <div class="wrap" id="view-claims" style="display:none">
+    <div class="striptop" style="margin-bottom:12px">
+      <div class="nav">
+        <button id="cm-proposed" class="on" onclick="claimsSetMode('proposed')">◷ Proposed</button>
+        <button id="cm-approved" onclick="claimsSetMode('approved')">✓ Approved</button>
+        <button id="cm-dossiers" onclick="claimsSetMode('dossiers')">📚 Dossiers</button>
+      </div>
+      <button class="brief" onclick="embedClaims()" title="Backfill embeddings for approved claims so they become searchable">⚡ Embed pending</button>
+    </div>
+    <div id="claimslist"><div class="libempty">loading…</div></div>
   </div>
 </div>
 
@@ -716,13 +751,16 @@
     document.getElementById("view-lib").style.display=v==="lib"?"block":"none";
     document.getElementById("view-journal").style.display=v==="journal"?"block":"none";
     document.getElementById("view-archive").style.display=v==="archive"?"block":"none";
+    document.getElementById("view-claims").style.display=v==="claims"?"block":"none";
     document.getElementById("composer").style.display=v==="chat"?"block":"none";
     document.getElementById("nav-chat").classList.toggle("on",v==="chat");
     document.getElementById("nav-lib").classList.toggle("on",v==="lib");
     document.getElementById("nav-journal").classList.toggle("on",v==="journal");
     document.getElementById("nav-archive").classList.toggle("on",v==="archive");
+    document.getElementById("nav-claims").classList.toggle("on",v==="claims");
     if(v==="lib") libReload();
     if(v==="journal") journalLoad();
+    if(v==="claims") claimsReload();
   }
 
   // ---- archive / archaeology (Phase 10) ----
@@ -761,6 +799,97 @@
     const d=await post({action:"archive_ingest",token,filename,content});
     if(d.ok){toast(`ingested ${d.chunks} chunk(s)`);document.getElementById("a-content").value="";}
     else toast("ingest failed: "+(d.error||""));
+  }
+
+  // ---- claim/theory graph curation (Phase 1) ----
+  let claimsMode="proposed";
+  function claimsSetMode(m){
+    claimsMode=m;
+    for(const x of ["proposed","approved","dossiers"]) document.getElementById("cm-"+x).classList.toggle("on",m===x);
+    claimsReload();
+  }
+  function theoryKeyFromDoc(fn){
+    return fn.replace(/\.(pdf|docx)$/i,"").replace(/_Canonical.*$/i,"").replace(/_v\d.*$/i,"")
+      .replace(/_\d{4}-\d{2}-\d{2}.*$/,"").replace(/[^a-z0-9]+/gi,"_").replace(/^_+|_+$/g,"").toLowerCase();
+  }
+  function theoryNameFromDoc(fn){
+    return fn.replace(/\.(pdf|docx)$/i,"").replace(/_Canonical.*$/i,"").replace(/_v\d.*$/i,"")
+      .replace(/_\d{4}-\d{2}-\d{2}.*$/,"").replace(/_/g," ").trim();
+  }
+  async function claimsReload(){
+    const el=document.getElementById("claimslist");
+    el.innerHTML='<div class="libempty">loading…</div>';
+    if(claimsMode==="dossiers") return renderDossiers();
+    const d=await post({action:"list_claims",status:claimsMode});
+    const claims=d.claims||[];
+    if(!claims.length){el.innerHTML='<div class="libempty">No '+claimsMode+' claims yet. Go to 📚 Dossiers to extract from a theory.</div>';return;}
+    // group by theory
+    const byTheory={};
+    for(const c of claims){ (byTheory[c.theory_key]=byTheory[c.theory_key]||[]).push(c); }
+    el.innerHTML=Object.keys(byTheory).sort().map(tk=>{
+      const list=byTheory[tk];
+      const head=`<div class="thead"><span class="tk">${escapeHtml(tk)}</span><span class="tc">${list.length} ${claimsMode}</span>`+
+        (claimsMode==="proposed"?`<button class="act cont" onclick="approveTheory('${tk}')">✓ approve all ${list.length}</button>`:"")+`</div>`;
+      return `<div class="tgroup">${head}`+list.map(renderClaimCard).join("")+`</div>`;
+    }).join("");
+  }
+  function condClass(t){return t==="necessary"||t==="threshold"?"cc-hard":t==="sufficient"?"cc-suf":"cc-soft";}
+  function renderClaimCard(c){
+    const vars=(c.variables||[]).map(v=>`<span class="vch">${escapeHtml(v)}</span>`).join("");
+    return `<div class="claim">`+
+      `<div class="chead"><span class="cid">${escapeHtml(c.claim_id)}</span>`+
+        `<span class="cc ${condClass(c.condition_type)}">${escapeHtml(c.condition_type)}</span>`+
+        `<span class="conf">${escapeHtml(c.confidence)}</span>`+
+        (c.threshold?`<span class="thr">⟐ ${escapeHtml(c.threshold)}</span>`:"")+
+        (c.regime_dependency?`<span class="thr">◱ ${escapeHtml(c.regime_dependency)}</span>`:"")+
+        (c.lag?`<span class="thr">⏱ ${escapeHtml(c.lag)}</span>`:"")+
+      `</div>`+
+      `<div class="cstmt">${escapeHtml(c.statement)}</div>`+
+      (c.rationale?`<div class="cwhy"><b>Why:</b> ${escapeHtml(c.rationale)}</div>`:"")+
+      (c.implication?`<div class="cso"><b>So-what:</b> ${escapeHtml(c.implication)}</div>`:"")+
+      (vars?`<div class="cvars">${vars}</div>`:"")+
+      `<div class="cact">`+
+        (c.status!=="approved"?`<button class="act" onclick="setClaim('${c.claim_id}','approved')">✓ approve</button>`:"")+
+        (c.status!=="rejected"?`<button class="act" onclick="setClaim('${c.claim_id}','rejected')">✕ reject</button>`:"")+
+      `</div></div>`;
+  }
+  async function renderDossiers(){
+    const el=document.getElementById("claimslist");
+    const d=await post({action:"list_dossiers"});
+    const docs=d.dossiers||[];
+    if(!docs.length){el.innerHTML='<div class="libempty">No dossiers found.</div>';return;}
+    el.innerHTML=docs.map(x=>{
+      const done=x.claims>0;
+      return `<div class="dcard">`+
+        `<div class="dname">${escapeHtml(theoryNameFromDoc(x.filename))}</div>`+
+        `<div class="dmeta">${x.chunks} chunks · ${x.claims} claims${x.approved?` · ${x.approved} approved`:""} · <span class="mono">${escapeHtml(x.filename)}</span></div>`+
+        `<div class="cact"><button class="act ${done?'':'cont'}" onclick="extractDossier('${x.filename.replace(/'/g,"\\'")}')">${done?'↻ re-extract':'⚙ extract claims'}</button></div>`+
+      `</div>`;
+    }).join("");
+  }
+  async function extractDossier(filename){
+    const theory_key=theoryKeyFromDoc(filename), theory_name=theoryNameFromDoc(filename);
+    toast("distilling claims (Haiku)…");
+    const d=await post({action:"extract_claims",filename,theory_key,theory_name});
+    if(d.ok){toast(`+${d.inserted} claims proposed for ${theory_name}`);claimsSetMode('proposed');}
+    else toast("extract failed: "+(d.error||""));
+  }
+  async function setClaim(claim_id,status){
+    const d=await post({action:"set_claim_status",claim_id,status});
+    if(d.ok){toast(status==='approved'?'approved':'rejected');claimsReload();}
+    else toast("failed: "+(d.error||""));
+  }
+  async function approveTheory(tk){
+    if(!confirm("Approve ALL proposed claims in "+tk+"?"))return;
+    const d=await post({action:"set_claim_status",status:"approved",all_proposed_in_theory:tk});
+    if(d.ok){toast(`approved ${d.updated}`);claimsReload();}
+    else toast("failed: "+(d.error||""));
+  }
+  async function embedClaims(){
+    toast("embedding pending claims…");
+    const d=await post({action:"embed_claims"});
+    if(d.ok!==undefined){toast(`embedded ${d.embedded}${d.remaining?`, ${d.remaining} left (run again)`:""}`);}
+    else toast("embed failed: "+(d.error||""));
   }
 
   // ---- trading journal (Phase 5.13) ----
