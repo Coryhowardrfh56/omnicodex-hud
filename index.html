@@ -97,6 +97,8 @@
   .drift .dm{font-family:var(--mono);font-size:12px;line-height:1.7;}
   .drift .dm .up{color:var(--good);} .drift .dm .dn{color:#e06c75;}
   .spinner{color:var(--dim);padding:8px 0;font-family:var(--mono);}
+  .spinner .dots{animation:blink 1.2s steps(1) infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
   .err{color:var(--bad);font-family:var(--mono);font-size:13px;}
   .examples{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0;}
   .ex{background:var(--panel);border:1px solid var(--line);color:var(--dim);border-radius:16px;padding:6px 12px;font-size:12px;cursor:pointer;}
@@ -601,6 +603,29 @@
     archSearch();
   }
 
+  // staged "thinking" display — the pipeline's real steps, cycled while we wait,
+  // so a deep/web answer never looks stale. (The request is one round-trip; these
+  // stages mirror what the server actually does in order.)
+  let thinkTimer=null;
+  function startThinking(tid){
+    const deep=tier!=="ROUTER";
+    const stages=[
+      "routing your question",
+      "loading your canonical thesis",
+      "retrieving relevant claims across theories",
+      "pulling live feeds (yields, real yields, oil, BTC, stablecoins)",
+      ...(webOn?["searching the web for gaps (gold, geopolitics)"]:[]),
+      deep?"reasoning through it deeply":"reasoning",
+      "composing the analysis",
+      "checking theses & contradictions",
+    ];
+    let i=0;
+    const paint=()=>{const el=document.getElementById(tid);if(!el)return;
+      el.querySelector(".spinner").innerHTML=`◍ ${stages[Math.min(i,stages.length-1)]}<span class="dots">…</span>`;};
+    paint();
+    thinkTimer=setInterval(()=>{ i++; paint(); }, deep?4200:2200);
+  }
+  function stopThinking(){ if(thinkTimer){clearInterval(thinkTimer);thinkTimer=null;} }
   async function ask(prefill){
     const el=document.getElementById("q");
     const q=(prefill||el.value).trim();
@@ -610,11 +635,13 @@
     messages.push({role:"user",text:q});
     const tid="think"+Date.now();
     renderThread();
-    document.getElementById("thread").insertAdjacentHTML("beforeend",`<div class="msg" id="${tid}"><div class="spinner">◍ ${tier==="SPECIALIST"?"deep analysis":"thinking"}…</div></div>`);
+    document.getElementById("thread").insertAdjacentHTML("beforeend",`<div class="msg" id="${tid}"><div class="spinner">◍ thinking…</div></div>`);
+    startThinking(tid);
     scrollDown();
     const history=messages.slice(0,-1).slice(-HISTORY_TURNS).map(m=>({role:m.role,content:m.text}));
     try{
       const d=await post({message:q,tier,history,web:webOn});
+      stopThinking();
       document.getElementById(tid)?.remove();
       if(d.error){messages.push({role:"assistant",text:"**Error:** "+d.error});}
       else{
@@ -626,8 +653,8 @@
         autoSaveAnswer(messages.length-1); // auto-record every answer to the server-side history
       }
       renderThread();renderMeter();save();scrollDown();
-    }catch(e){document.getElementById(tid)?.remove();messages.push({role:"assistant",text:"**Error:** "+e});renderThread();save();}
-    finally{go.disabled=false;}
+    }catch(e){stopThinking();document.getElementById(tid)?.remove();messages.push({role:"assistant",text:"**Error:** "+e});renderThread();save();}
+    finally{stopThinking();go.disabled=false;}
   }
   // ---- regime auto-suggest ----
   const STOP=new Set(["the","and","for","what","does","how","with","that","this","from","are","now","right","given","about","into","vs","you","my","me","our","can","will","should","would","its"]);
