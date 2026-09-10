@@ -115,6 +115,7 @@
   .webbtn{background:none;border:1px solid var(--line);color:var(--dim);border-radius:8px;padding:8px 12px;cursor:pointer;font:inherit;font-size:13px;}
   .webbtn.on{color:var(--teal);border-color:var(--teal);background:rgba(79,214,196,.1);}
   .badge.web{color:var(--teal);border-color:rgba(79,214,196,.4);} .gchip.web{color:var(--teal);text-decoration:none;}
+  .badge.spine{color:var(--purple,#b98cff);border-color:rgba(185,140,255,.4);}
   .brief:hover{color:var(--text);border-color:var(--accent);}
   .hint{color:var(--dim);font-size:12px;}
   .go{margin-left:auto;background:var(--accent);color:#06101f;border:none;border-radius:8px;padding:9px 22px;font-weight:600;cursor:pointer;font:inherit;}
@@ -318,7 +319,8 @@
     <div class="row">
       <div class="tier">
         <button id="t-haiku" class="on" onclick="setTier('ROUTER')">Fast · Haiku</button>
-        <button id="t-opus" class="opus" onclick="setTier('SPECIALIST')">Deep · Opus ($)</button>
+        <button id="t-sonnet" onclick="setTier('SPECIALIST')">Deep · Sonnet</button>
+        <button id="t-opus" class="opus" onclick="setTier('MAX')">Max · Opus ($$)</button>
       </div>
       <button id="webtoggle" class="webbtn" onclick="toggleWeb()" title="Let it verify gaps against live web sources (adds ~$0.01/search)">🌐 Web: off</button>
       <button class="brief" onclick="dailyBrief()" title="Generate a macro brief from live data">📋 Daily brief</button>
@@ -476,8 +478,9 @@
 
   function setTier(t){tier=t;
     document.getElementById("t-haiku").classList.toggle("on",t==="ROUTER");
-    document.getElementById("t-opus").classList.toggle("on",t==="SPECIALIST");
-    document.getElementById("tierhint").textContent=t==="ROUTER"?"Fast mode ≈ $0.01 / question":"Deep mode ≈ $0.50–0.70 / question";
+    document.getElementById("t-sonnet").classList.toggle("on",t==="SPECIALIST");
+    document.getElementById("t-opus").classList.toggle("on",t==="MAX");
+    document.getElementById("tierhint").textContent=t==="ROUTER"?"Fast mode ≈ $0.01 / question":t==="SPECIALIST"?"Deep mode (Sonnet) ≈ $0.15–0.30 / question":"Max mode (Opus) ≈ $0.45–1.00 / question";
   }
   function fill(el){document.getElementById("q").value=el.textContent;document.getElementById("q").focus();}
 
@@ -531,6 +534,8 @@
       `<span class="badge dom" onclick="domainLens('${d.routing?.domain||""}')">${d.routing?.domain||"?"}</span>`+
       `<span class="badge">${d.tier} · ${d.model||""}</span>`+
       (sel.questionTypes?.length?`<span class="badge">${sel.questionTypes.join(", ")}</span>`:"")+
+      ((d.spine&&d.spine.length)?`<span class="badge spine" title="${d.spine.map(escapeHtml).join(', ')}">📎 canonical thesis loaded (${d.spine.length})</span>`:"")+
+      (u.cacheReadTokens?`<span class="badge" style="color:var(--teal)" title="spine served from cache — ~10% cost">⚡ cached</span>`:"")+
       (u.webSearches?`<span class="badge web">🌐 ${u.webSearches} web search${u.webSearches>1?"es":""}</span>`:"")+
       (d.webFailed?`<span class="badge" style="color:var(--warn)">🌐 web unavailable — answered without it</span>`:(d.webRequested&&!u.webSearches?`<span class="badge">🌐 web on · no gaps needed searching</span>`:""))+
       `<span class="badge cost">$${(u.estimatedCostUsd??0).toFixed(4)} · ${u.inputTokens||0}in/${u.outputTokens||0}out</span>`+
