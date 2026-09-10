@@ -116,6 +116,7 @@
   .webbtn.on{color:var(--teal);border-color:var(--teal);background:rgba(79,214,196,.1);}
   .badge.web{color:var(--teal);border-color:rgba(79,214,196,.4);} .gchip.web{color:var(--teal);text-decoration:none;}
   .badge.spine{color:var(--purple,#b98cff);border-color:rgba(185,140,255,.4);}
+  .badge.claims{color:var(--accent);border-color:rgba(110,168,255,.4);}
   /* claims panel */
   .tgroup{margin-bottom:22px}
   .thead{display:flex;align-items:center;gap:12px;margin:6px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}
@@ -569,6 +570,7 @@
       `<span class="badge dom" onclick="domainLens('${d.routing?.domain||""}')">${d.routing?.domain||"?"}</span>`+
       `<span class="badge">${d.tier} · ${d.model||""}</span>`+
       (sel.questionTypes?.length?`<span class="badge">${sel.questionTypes.join(", ")}</span>`:"")+
+      ((d.claims&&d.claims.retrieved)?`<span class="badge claims" title="${(d.claims.ids||[]).join(', ')}">🧩 ${d.claims.retrieved} claims · ${(d.claims.theories||[]).length} theor${(d.claims.theories||[]).length===1?'y':'ies'}</span>`:"")+
       ((d.spine&&d.spine.length)?`<span class="badge spine" title="${d.spine.map(escapeHtml).join(', ')}">📎 canonical thesis loaded (${d.spine.length})</span>`:"")+
       (u.cacheReadTokens?`<span class="badge" style="color:var(--teal)" title="spine served from cache — ~10% cost">⚡ cached</span>`:"")+
       (u.webSearches?`<span class="badge web">🌐 ${u.webSearches} web search${u.webSearches>1?"es":""}</span>`:"")+
@@ -576,6 +578,7 @@
       `<span class="badge cost">$${(u.estimatedCostUsd??0).toFixed(4)} · ${u.inputTokens||0}in/${u.outputTokens||0}out</span>`+
       (chips?`<div style="flex-basis:100%;margin-top:5px">${chips}</div>`:"")+`</div>`+
       (gchips?`<div class="grounded"><span class="glabel">grounded in</span>${gchips}</div>`:"")+
+      ((d.claims&&d.claims.ids&&d.claims.ids.length)?`<div class="grounded"><span class="glabel">canonical claims</span>${d.claims.ids.map(id=>`<span class="gchip" style="color:var(--accent);border-color:rgba(110,168,255,.35);background:rgba(110,168,255,.08)">🧩 ${escapeHtml(id)}</span>`).join(" ")}</div>`:"")+
       (schips?`<div class="grounded"><span class="glabel">web sources</span>${schips}</div>`:"")+
       learnRow(d);
   }
