@@ -528,7 +528,7 @@
     document.getElementById("t-haiku").classList.toggle("on",t==="ROUTER");
     document.getElementById("t-sonnet").classList.toggle("on",t==="SPECIALIST");
     document.getElementById("t-opus").classList.toggle("on",t==="MAX");
-    document.getElementById("tierhint").textContent=t==="ROUTER"?"Fast mode ≈ $0.01 / question":t==="SPECIALIST"?"Deep report (Sonnet, streamed) ≈ $0.40–0.70 · ~60s":"Max report (Opus, streamed) ≈ $1–2 · ~90s";
+    document.getElementById("tierhint").textContent=t==="ROUTER"?"Fast mode ≈ $0.01 / question":t==="SPECIALIST"?"Deep report (Sonnet, ~12 sections streamed) ≈ $0.70–1.20 · ~70s":"Max report (Opus, ~12 sections streamed) ≈ $2–3 · ~100s";
   }
   function fill(el){document.getElementById("q").value=el.textContent;document.getElementById("q").focus();}
 
