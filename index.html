@@ -99,6 +99,9 @@
   .spinner{color:var(--dim);padding:8px 0;font-family:var(--mono);}
   .spinner .dots{animation:blink 1.2s steps(1) infinite}
   @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+  .streamnote{display:flex;align-items:center;gap:10px;margin-top:8px;font-family:var(--mono);font-size:12px;color:var(--accent)}
+  .streamnote .dots{animation:blink 1.2s steps(1) infinite}
+  .act.stopbtn{color:var(--bad,#e2726e);border-color:var(--bad,#e2726e)}
   .err{color:var(--bad);font-family:var(--mono);font-size:13px;}
   .examples{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0;}
   .ex{background:var(--panel);border:1px solid var(--line);color:var(--dim);border-radius:16px;padding:6px 12px;font-size:12px;cursor:pointer;}
@@ -500,6 +503,13 @@
     t.innerHTML=messages.map((m,i)=>{
       const ref=m.pastRef?`<div class="pastref">↩ from library${m.raw?.created_at?" · "+new Date(m.raw.created_at).toLocaleDateString():""}</div>`:"";
       if(m.role==="user") return `<div class="msg user">${ref}<div class="bubble">${escapeHtml(m.text)}</div></div>`;
+      if(m.streaming){
+        const hasSecs=m.sections&&m.sections.length;
+        const body=hasSecs?highlight(marked.parse(assembleSections(m))):`<div class="spinner">◍ ${m.status||"thinking"}<span class="dots">…</span></div>`;
+        const doneCount=hasSecs?m.sections.filter(s=>s.markdown&&s.markdown.trim()).length:0;
+        const prog=hasSecs?`writing ${doneCount}/${m.sections.length} sections`:(m.status||"thinking");
+        return `<div class="msg"><div class="answer">${body}</div><div class="streamnote">▍ ${prog}<span class="dots">…</span> <button class="act stopbtn" onclick="stopStream()">■ stop</button></div></div>`;
+      }
       const sug=m.suggestion?`<div class="suggest" onclick="libOpen('${m.suggestion.id}')">◎ You analyzed a similar regime <span class="s">(${m.suggestion.similarity}% match)</span> on ${new Date(m.suggestion.created_at).toLocaleDateString()}: “${escapeHtml((m.suggestion.question||"").slice(0,90))}” — re-read →</div>`:"";
       return `<div class="msg">${ref}<div class="answer">${highlight(marked.parse(m.text))}</div>${sug}${m.metaHtml||""}${actionBar(i,m)}</div>`;
     }).join("");
@@ -518,7 +528,7 @@
     document.getElementById("t-haiku").classList.toggle("on",t==="ROUTER");
     document.getElementById("t-sonnet").classList.toggle("on",t==="SPECIALIST");
     document.getElementById("t-opus").classList.toggle("on",t==="MAX");
-    document.getElementById("tierhint").textContent=t==="ROUTER"?"Fast mode ≈ $0.01 / question":t==="SPECIALIST"?"Deep mode (Sonnet) ≈ $0.15–0.30 / question":"Max mode (Opus) ≈ $0.45–1.00 / question";
+    document.getElementById("tierhint").textContent=t==="ROUTER"?"Fast mode ≈ $0.01 / question":t==="SPECIALIST"?"Deep report (Sonnet, streamed) ≈ $0.40–0.70 · ~60s":"Max report (Opus, streamed) ≈ $1–2 · ~90s";
   }
   function fill(el){document.getElementById("q").value=el.textContent;document.getElementById("q").focus();}
 
@@ -633,12 +643,14 @@
     const go=document.getElementById("go");
     go.disabled=true; if(!prefill) el.value="";
     messages.push({role:"user",text:q});
+    const history=messages.slice(0,-1).slice(-HISTORY_TURNS).map(m=>({role:m.role,content:m.text}));
+    // Deep/Max tiers -> streamed parallel-section report; Fast (Haiku) -> single call
+    if(tier!=="ROUTER"){ renderThread(); scrollDown(); return askStream(q,history,go); }
     const tid="think"+Date.now();
     renderThread();
     document.getElementById("thread").insertAdjacentHTML("beforeend",`<div class="msg" id="${tid}"><div class="spinner">◍ thinking…</div></div>`);
     startThinking(tid);
     scrollDown();
-    const history=messages.slice(0,-1).slice(-HISTORY_TURNS).map(m=>({role:m.role,content:m.text}));
     try{
       const d=await post({message:q,tier,history,web:webOn});
       stopThinking();
@@ -655,6 +667,59 @@
       renderThread();renderMeter();save();scrollDown();
     }catch(e){stopThinking();document.getElementById(tid)?.remove();messages.push({role:"assistant",text:"**Error:** "+e});renderThread();save();}
     finally{stopThinking();go.disabled=false;}
+  }
+
+  // ---- streamed deep report (parallel sections over SSE) ----
+  let currentAbort=null;
+  function assembleSections(m){
+    return (m.sections||[]).map(s=>(s.markdown&&s.markdown.trim())?s.markdown:`## ${s.title}\n\n_writing…_`).join("\n\n");
+  }
+  function stopStream(){ if(currentAbort){ try{currentAbort.abort();}catch{} } }
+  async function askStream(q,history,go){
+    const mi=messages.push({role:"assistant",text:"",sections:[],streaming:true,status:"routing",raw:{question:q,tier}})-1;
+    const m=messages[mi];
+    currentAbort=new AbortController();
+    renderThread(); scrollDown();
+    try{
+      const r=await fetch(ENDPOINT,{method:"POST",
+        headers:{"content-type":"application/json",authorization:"Bearer "+(authSession?.access_token||ANON)},
+        body:JSON.stringify({message:q,tier,history,web:webOn,stream:true}),signal:currentAbort.signal});
+      if(r.status===401&&authSession){ if(await tryRefresh()){ messages.splice(mi,1); return askStream(q,history,go);} logout(); m.streaming=false; m.text="**Error:** session expired"; renderThread(); return; }
+      if(!r.ok||!r.body){ m.streaming=false; m.text="**Error:** stream failed ("+r.status+")"; renderThread(); return; }
+      const reader=r.body.getReader(), dec=new TextDecoder(); let buf="", doneData=null;
+      while(true){
+        const {value,done}=await reader.read(); if(done) break;
+        buf+=dec.decode(value,{stream:true});
+        let idx;
+        while((idx=buf.indexOf("\n\n"))>=0){
+          const line=buf.slice(0,idx); buf=buf.slice(idx+2);
+          const p=line.indexOf("data:"); if(p<0) continue;
+          let o; try{o=JSON.parse(line.slice(p+5).trim());}catch{continue;}
+          if(o.type==="status"){ m.status=o.stage; }
+          else if(o.type==="outline"){ m.sections=(o.sections||[]).map(t=>({title:t,markdown:""})); m.text=assembleSections(m); }
+          else if(o.type==="section"){ if(m.sections[o.index]) m.sections[o.index].markdown=o.markdown; m.text=assembleSections(m); }
+          else if(o.type==="done"){ doneData=o; }
+          else if(o.type==="error"){ m.text="**Error:** "+o.message; }
+          renderThread(); scrollDown();
+        }
+      }
+      if(doneData){
+        m.text=doneData.answer||assembleSections(m);
+        m.metaHtml=metaBar(doneData);
+        m.raw={question:q,domain:doneData.routing?.domain,tier:doneData.tier,model:doneData.model,selection:doneData.selection,usage:doneData.usage,feeds:doneData.feeds};
+        session.count++; session.cost+=doneData.usage?.estimatedCostUsd||0;
+      }
+      m.streaming=false;
+      renderThread(); renderMeter(); save(); scrollDown();
+      if(doneData){ loadFeeds(); maybeSuggest(mi,q); autoSaveAnswer(mi); }
+    }catch(e){
+      m.streaming=false;
+      if(e&&e.name==="AbortError"){
+        const got=(m.sections||[]).filter(s=>s.markdown&&s.markdown.trim()).map(s=>s.markdown).join("\n\n");
+        m.text=(got||"")+"\n\n_(stopped)_";
+      } else { m.text="**Error:** "+e; }
+      renderThread(); save(); scrollDown();
+    }finally{ currentAbort=null; go.disabled=false; }
   }
   // ---- regime auto-suggest ----
   const STOP=new Set(["the","and","for","what","does","how","with","that","this","from","are","now","right","given","about","into","vs","you","my","me","our","can","will","should","would","its"]);
