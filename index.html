@@ -664,13 +664,16 @@
     const wantReport = (tier!=="ROUTER") && (opts.deep || !prior);
     if(wantReport){ renderThread(); scrollDown(); return askStream(q,history,go); }
     const discuss = prior; // follow-ups are conversational
+    // stay in the conversation's domain on follow-ups so memory/claims/feeds/spine keep loading
+    const lastAns=[...messages].reverse().find(m=>m.role==="assistant"&&m.raw&&m.raw.domain);
+    const domainHint=lastAns&&lastAns.raw?lastAns.raw.domain:undefined;
     const tid="think"+Date.now();
     renderThread();
     document.getElementById("thread").insertAdjacentHTML("beforeend",`<div class="msg" id="${tid}"><div class="spinner">◍ ${discuss?"thinking it through":"thinking"}…</div></div>`);
     startThinking(tid);
     scrollDown();
     try{
-      const d=await post({message:q,tier,history,web:webOn,mode:discuss?"discuss":undefined});
+      const d=await post({message:q,tier,history,web:webOn,mode:discuss?"discuss":undefined,domainHint:discuss?domainHint:undefined});
       stopThinking();
       document.getElementById(tid)?.remove();
       if(d.error){messages.push({role:"assistant",text:"**Error:** "+d.error});}
