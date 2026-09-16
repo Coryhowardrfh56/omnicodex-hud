@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<!-- discourage stale cached builds so a returning/new device loads the current app -->
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate" />
 <title>Sovereign Omnicodex</title>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
@@ -102,6 +104,10 @@
   .streamnote{display:flex;align-items:center;gap:10px;margin-top:8px;font-family:var(--mono);font-size:12px;color:var(--accent)}
   .streamnote .dots{animation:blink 1.2s steps(1) infinite}
   .act.stopbtn{color:var(--bad,#e2726e);border-color:var(--bad,#e2726e)}
+  .followups{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:10px}
+  .fchip{background:rgba(110,168,255,.08);border:1px solid rgba(110,168,255,.35);color:var(--accent);border-radius:16px;padding:5px 11px;font:inherit;font-size:12.5px;cursor:pointer;text-align:left}
+  .fchip:hover{background:rgba(110,168,255,.18)}
+  .fchip.drill{color:var(--purple,#b98cff);border-color:rgba(185,140,255,.4);background:rgba(185,140,255,.08)}
   .err{color:var(--bad);font-family:var(--mono);font-size:13px;}
   .examples{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0;}
   .ex{background:var(--panel);border:1px solid var(--line);color:var(--dim);border-radius:16px;padding:6px 12px;font-size:12px;cursor:pointer;}
@@ -365,6 +371,7 @@
       </div>
       <button id="webtoggle" class="webbtn" onclick="toggleWeb()" title="Let it verify gaps against live web sources (adds ~$0.01/search)">🌐 Web: off</button>
       <button class="brief" onclick="dailyBrief()" title="Generate a macro brief from live data">📋 Daily brief</button>
+      <button class="brief" onclick="deepDive()" title="Force a full multi-section deep report on this question">🔬 Deep dive</button>
       <span class="hint" id="tierhint">Fast mode ≈ $0.01 / question</span>
       <button class="go" id="go" onclick="ask()">Ask →</button>
     </div>
@@ -511,7 +518,9 @@
         return `<div class="msg"><div class="answer">${body}</div><div class="streamnote">▍ ${prog}<span class="dots">…</span> <button class="act stopbtn" onclick="stopStream()">■ stop</button></div></div>`;
       }
       const sug=m.suggestion?`<div class="suggest" onclick="libOpen('${m.suggestion.id}')">◎ You analyzed a similar regime <span class="s">(${m.suggestion.similarity}% match)</span> on ${new Date(m.suggestion.created_at).toLocaleDateString()}: “${escapeHtml((m.suggestion.question||"").slice(0,90))}” — re-read →</div>`:"";
-      return `<div class="msg">${ref}<div class="answer">${highlight(marked.parse(m.text))}</div>${sug}${m.metaHtml||""}${actionBar(i,m)}</div>`;
+      const isLast=i===messages.length-1;
+      const fups=(isLast&&m.followups&&m.followups.length)?`<div class="followups"><span class="glabel">dig deeper</span>${m.followups.map(f=>`<button class="fchip" onclick="askFollowup(this.dataset.q)" data-q="${escapeHtml(f).replace(/"/g,'&quot;')}">${escapeHtml(f)}</button>`).join("")}<button class="fchip drill" onclick="autoDrill()" title="Let it drill down on its own for a few turns">🔄 auto-drill</button></div>`:"";
+      return `<div class="msg">${ref}<div class="answer">${highlight(marked.parse(m.text))}</div>${sug}${m.metaHtml||""}${actionBar(i,m)}${fups}</div>`;
     }).join("");
     document.getElementById("examples").style.display=messages.length?"none":"flex";
   }
@@ -636,7 +645,11 @@
     thinkTimer=setInterval(()=>{ i++; paint(); }, deep?4200:2200);
   }
   function stopThinking(){ if(thinkTimer){clearInterval(thinkTimer);thinkTimer=null;} }
-  async function ask(prefill){
+  function hasPriorAnswer(){
+    return messages.slice(0,-1).some(m=>m.role==="assistant" && !m.streaming && m.text && !m.text.startsWith("**Error"));
+  }
+  async function ask(prefill,opts){
+    opts=opts||{};
     const el=document.getElementById("q");
     const q=(prefill||el.value).trim();
     if(!q) return;
@@ -644,21 +657,26 @@
     go.disabled=true; if(!prefill) el.value="";
     messages.push({role:"user",text:q});
     const history=messages.slice(0,-1).slice(-HISTORY_TURNS).map(m=>({role:m.role,content:m.text}));
-    // Deep/Max tiers -> streamed parallel-section report; Fast (Haiku) -> single call
-    if(tier!=="ROUTER"){ renderThread(); scrollDown(); return askStream(q,history,go); }
+    // Routing: a FRESH deep question -> full streamed report; a FOLLOW-UP (there's
+    // already an answer in the thread) -> fast conversational "discuss" turn.
+    // "Deep dive" (opts.deep) forces a full report on any turn.
+    const prior=hasPriorAnswer();
+    const wantReport = (tier!=="ROUTER") && (opts.deep || !prior);
+    if(wantReport){ renderThread(); scrollDown(); return askStream(q,history,go); }
+    const discuss = prior; // follow-ups are conversational
     const tid="think"+Date.now();
     renderThread();
-    document.getElementById("thread").insertAdjacentHTML("beforeend",`<div class="msg" id="${tid}"><div class="spinner">◍ thinking…</div></div>`);
+    document.getElementById("thread").insertAdjacentHTML("beforeend",`<div class="msg" id="${tid}"><div class="spinner">◍ ${discuss?"thinking it through":"thinking"}…</div></div>`);
     startThinking(tid);
     scrollDown();
     try{
-      const d=await post({message:q,tier,history,web:webOn});
+      const d=await post({message:q,tier,history,web:webOn,mode:discuss?"discuss":undefined});
       stopThinking();
       document.getElementById(tid)?.remove();
       if(d.error){messages.push({role:"assistant",text:"**Error:** "+d.error});}
       else{
         session.count++; session.cost+=d.usage?.estimatedCostUsd||0;
-        messages.push({role:"assistant",text:d.answer||"(empty)",metaHtml:metaBar(d),
+        messages.push({role:"assistant",text:d.answer||"(empty)",metaHtml:metaBar(d),followups:d.followups||[],
           raw:{question:q,domain:d.routing?.domain,tier:d.tier,model:d.model,selection:d.selection,usage:d.usage,feeds:d.feeds}});
         loadFeeds();
         maybeSuggest(messages.length-1,q); // fire-and-forget regime auto-suggest
@@ -667,6 +685,21 @@
       renderThread();renderMeter();save();scrollDown();
     }catch(e){stopThinking();document.getElementById(tid)?.remove();messages.push({role:"assistant",text:"**Error:** "+e});renderThread();save();}
     finally{stopThinking();go.disabled=false;}
+  }
+  function askFollowup(text){ if(text&&text.trim()) ask(text.trim()); }
+  function deepDive(){ const q=document.getElementById("q").value.trim(); if(q) ask(q,{deep:true}); }
+  // Auto-drill: let it pursue its own top follow-up for a few turns, then stop.
+  let drilling=false;
+  async function autoDrill(levels){
+    if(drilling) { drilling=false; toast("auto-drill stopped"); return; }
+    drilling=true; toast("auto-drilling…");
+    for(let i=0;i<(levels||3) && drilling;i++){
+      const last=messages[messages.length-1];
+      const fups=last&&last.followups;
+      if(!fups||!fups.length) break;
+      await ask(fups[0]);
+    }
+    drilling=false;
   }
 
   // ---- streamed deep report (parallel sections over SSE) ----
@@ -706,6 +739,7 @@
       if(doneData){
         m.text=doneData.answer||assembleSections(m);
         m.metaHtml=metaBar(doneData);
+        m.followups=doneData.followups||[];
         m.raw={question:q,domain:doneData.routing?.domain,tier:doneData.tier,model:doneData.model,selection:doneData.selection,usage:doneData.usage,feeds:doneData.feeds};
         session.count++; session.cost+=doneData.usage?.estimatedCostUsd||0;
       }
