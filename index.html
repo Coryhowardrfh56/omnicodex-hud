@@ -7,6 +7,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, must-revalidate" />
 <title>Sovereign Omnicodex</title>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <style>
   :root {
     --bg:#0b0e14; --panel:#131824; --panel2:#1a2130; --line:#263145;
@@ -332,15 +333,26 @@
       </div>
     </div>
     <div id="archresult"></div>
-    <details style="margin-top:16px">
-      <summary style="cursor:pointer;color:var(--dim);font-size:13px">Ingest a document (admin — needs cron token)</summary>
+    <details style="margin-top:16px" open>
+      <summary style="cursor:pointer;color:var(--accent);font-size:13px">⬆ Upload a PDF to the library</summary>
       <div class="jform" style="margin-top:10px">
         <div class="jgrid">
-          <label>Filename<input id="a-filename" placeholder="Sovereign_Archive.txt" /></label>
-          <label>Cron token<input id="a-token" type="password" /></label>
-          <label class="wide">Text content (paste extracted text)<textarea id="a-content" rows="6"></textarea></label>
+          <label class="wide">PDF file<input id="u-file" type="file" accept="application/pdf,.pdf" /></label>
+          <label>Domain
+            <select id="u-domain">
+              <option value="PROMETHEUS">Prometheus (economics/markets)</option>
+              <option value="CHRONOS">Chronos (history)</option>
+              <option value="ICARUS">Icarus (philosophy/theology)</option>
+              <option value="METHUSELAH">Methuselah (health/bio)</option>
+              <option value="HERMES">Hermes (control/registry)</option>
+            </select>
+          </label>
+          <label class="wide">What is this document &amp; what's it for? (guides how it's used)
+            <textarea id="u-desc" rows="3" placeholder="e.g. Canonical dossier on the Bond Market Gravity theory — use for duration/real-yield/liquidity questions."></textarea></label>
         </div>
-        <div class="row"><button class="go" onclick="archIngest()">⬆ Ingest &amp; embed</button></div>
+        <div class="row"><button class="go" onclick="uploadDoc()">⬆ Upload &amp; embed</button>
+          <span class="hint" id="u-prog"></span></div>
+        <div class="hint" style="margin-top:6px">Text PDFs only — scanned/image PDFs need OCR. Embedding is free.</div>
       </div>
     </details>
   </div>
@@ -923,15 +935,48 @@
     if(!d.hits?.length){box.innerHTML='<div class="libempty">No matches. Ingest documents first.</div>';return;}
     box.innerHTML=d.hits.map(h=>`<div class="jentry"><div class="nums">${escapeHtml(h.filename)}#${h.chunk_index} · sim ${h.similarity.toFixed(3)}</div><div class="txt">${escapeHtml(h.content.slice(0,300))}…</div></div>`).join("");
   }
-  async function archIngest(){
-    const filename=document.getElementById("a-filename").value.trim();
-    const content=document.getElementById("a-content").value;
-    const token=document.getElementById("a-token").value.trim();
-    if(!filename||!content.trim()){toast("filename and content required");return;}
-    toast("embedding…");
-    const d=await post({action:"archive_ingest",token,filename,content});
-    if(d.ok){toast(`ingested ${d.chunks} chunk(s)`);document.getElementById("a-content").value="";}
-    else toast("ingest failed: "+(d.error||""));
+  // ---- PDF upload to the library (in-browser text extraction via pdf.js) ----
+  if(window.pdfjsLib){ pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js"; }
+  async function extractPdfText(file){
+    const buf=await file.arrayBuffer();
+    const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+    let text="";
+    for(let i=1;i<=pdf.numPages;i++){
+      const page=await pdf.getPage(i);
+      const c=await page.getTextContent();
+      text+=c.items.map(it=>it.str).join(" ")+"\n";
+    }
+    return text;
+  }
+  async function uploadDoc(){
+    const fEl=document.getElementById("u-file"); const f=fEl.files[0];
+    const prog=document.getElementById("u-prog");
+    if(!f){prog.textContent="pick a PDF first";return;}
+    const domain=document.getElementById("u-domain").value;
+    const desc=document.getElementById("u-desc").value.trim();
+    prog.textContent="reading PDF…";
+    let text; try{ text=await extractPdfText(f); }catch(e){ prog.textContent="couldn't read this PDF (scanned/image PDFs need OCR)"; return; }
+    if(!text||!text.trim()){ prog.textContent="no text found — is it a scanned/image PDF?"; return; }
+    const filename=f.name;
+    const full=(desc?`DOCUMENT PURPOSE (user-provided): ${desc}\n\n`:"")+text;
+    const PIECE=2500, pieces=Math.ceil(full.length/PIECE); let offset=0, ok=true, d;
+    for(let i=0;i<full.length;i+=PIECE){
+      prog.textContent=`embedding ${Math.floor(i/PIECE)+1}/${pieces}…`;
+      d=await post({action:"archive_ingest",filename,content:full.slice(i,i+PIECE),domain,chunk_offset:offset,replace:i===0});
+      if(d&&d.ok){ offset+=d.chunks; } else { ok=false; prog.textContent="upload failed: "+((d&&d.error)||"unknown"); break; }
+    }
+    if(ok){
+      prog.innerHTML=`✅ added <b>${escapeHtml(filename)}</b> to the library — ${offset} chunks (${domain}). `+
+        `<button class="act" onclick="distillDoc('${filename.replace(/'/g,"\\'")}')">⚙ distill into claims</button>`;
+      fEl.value=""; document.getElementById("u-desc").value="";
+    }
+  }
+  async function distillDoc(filename){
+    const key=filename.replace(/\.(pdf|docx)$/i,"").replace(/[^a-z0-9]+/gi,"_").replace(/^_+|_+$/g,"").toLowerCase();
+    const name=filename.replace(/\.(pdf|docx)$/i,"").replace(/_/g," ");
+    toast("distilling claims (Haiku)…");
+    const d=await post({action:"extract_claims",filename,theory_key:key,theory_name:name});
+    if(d.ok) toast(`+${d.inserted} claims proposed — review in the Claims tab`); else toast("distill failed: "+(d.error||""));
   }
 
   // ---- claim/theory graph curation (Phase 1) ----
